@@ -1,0 +1,24 @@
+{
+    "$schema": "./node_modules/oxfmt/configuration_schema.json",
+    "useTabs": false,
+    "tabWidth": 4,
+    "printWidth": 100,
+    "singleQuote": true,
+    "jsxSingleQuote": false,
+    "semi": false,
+    "trailingComma": "all",
+    "arrowParens": "always",
+    "endOfLine": "lf",
+    "insertFinalNewline": true,
+    "sortImports": true,
+    "sortPackageJson": false,
+    "ignorePatterns": [
+        "PocketRisu/**",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/coverage/**",
+        "web/src/routeTree.gen.ts",
+        "web/src/components/ui/**",
+        "server/src/db/migrations/**"
+    ]
+}

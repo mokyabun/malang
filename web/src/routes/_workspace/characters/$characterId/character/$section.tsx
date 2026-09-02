@@ -1,0 +1,25 @@
+import { createFileRoute } from '@tanstack/react-router'
+
+import { WorkspaceRoute } from '@/components/app/workspace-route'
+import type { CharacterEditorSection } from '@/components/app/workspace/types'
+
+const sections = new Set<CharacterEditorSection>([
+    'profile',
+    'display',
+    'greetings',
+    'lorebook',
+    'prompt',
+    'advanced',
+])
+
+export const Route = createFileRoute('/_workspace/characters/$characterId/character/$section')({
+    component: CharacterEditorPage,
+})
+
+function CharacterEditorPage() {
+    const { characterId, section: routeSection } = Route.useParams()
+    const section = sections.has(routeSection as CharacterEditorSection)
+        ? (routeSection as CharacterEditorSection)
+        : 'profile'
+    return <WorkspaceRoute page={{ kind: 'character', characterId, section }} />
+}

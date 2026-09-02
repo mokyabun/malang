@@ -1,0 +1,5 @@
+ALTER TABLE app_settings
+ADD COLUMN jailbreak_toggle INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE app_settings
+ADD COLUMN chain_of_thought INTEGER NOT NULL DEFAULT 0;

@@ -1,0 +1,43 @@
+{
+    "name": "malang",
+    "module": "index.ts",
+    "type": "module",
+    "private": true,
+    "devDependencies": {
+        "@types/bun": "latest",
+        "oxfmt": "^0.64.0",
+        "oxlint": "^1.79.0",
+        "oxlint-tsgolint": "^7.0.2001"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    },
+    "workspaces": [
+        "./server",
+        "./shared",
+        "./web"
+    ],
+    "scripts": {
+        "dev": "bun run --parallel dev:server dev:web",
+        "dev:server": "bun run --filter @malang/server dev",
+        "dev:web": "bun run --filter @malang/web dev",
+        "kill": "bun run --parallel kill:server kill:web",
+        "kill:server": "bun run --filter @malang/server kill",
+        "kill:web": "bun run --filter @malang/web kill",
+        "kill:port": "bun scripts/kill-port.js",
+        "build": "bun run --parallel build:server build:web",
+        "build:server": "bun run --filter @malang/server build",
+        "build:web": "bun run --filter @malang/web build",
+        "start": "bun run --filter @malang/server start",
+        "preview": "bun run --filter @malang/web preview",
+        "format": "bun run --parallel --no-exit-on-error --filter './*' format",
+        "format:check": "bun run --parallel --no-exit-on-error --filter './*' format:check",
+        "lint": "bun run --parallel --no-exit-on-error --filter './*' lint",
+        "lint:fix": "bun run --parallel --no-exit-on-error --filter './*' lint:fix",
+        "typecheck": "bun run --parallel --workspaces --if-present typecheck",
+        "check": "bun run --parallel --no-exit-on-error format:check lint typecheck",
+        "test": "bun run --parallel --no-exit-on-error --workspaces --if-present test",
+        "test:watch": "bun run --parallel --workspaces --if-present test:watch",
+        "db:generate": "bun run --filter @malang/server db:generate"
+    }
+}

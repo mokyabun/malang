@@ -1,0 +1,27 @@
+{
+    "name": "@malang/shared",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "scripts": {
+        "format": "oxfmt .",
+        "format:check": "oxfmt --check .",
+        "fmt": "bun run format",
+        "fmt:check": "bun run format:check",
+        "lint": "oxlint .",
+        "lint:fix": "oxlint --fix .",
+        "typecheck": "tsc --noEmit",
+        "check": "bun run --parallel --no-exit-on-error format:check lint typecheck",
+        "test": "bun test",
+        "test:watch": "bun test --watch"
+    },
+    "dependencies": {
+        "zod": "^4.1.12"
+    },
+    "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.9.3"
+    }
+}

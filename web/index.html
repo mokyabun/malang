@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="theme-color" content="#f8f9f9" />
+        <meta
+            name="description"
+            content="캐릭터 카드와 프롬프트를 위한 self-hosted AI chat workspace"
+        />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css"
+        />
+        <title>Malang</title>
+    </head>
+    <body>
+        <script>
+            try {
+                const savedTheme = localStorage.getItem('malang-theme')
+                const dark =
+                    savedTheme === 'dark' ||
+                    (!savedTheme && matchMedia('(prefers-color-scheme: dark)').matches)
+                document.documentElement.classList.toggle('dark', dark)
+                document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+            } catch {}
+        </script>
+        <div id="app"></div>
+        <script type="module" src="/src/main.tsx"></script>
+    </body>
+</html>

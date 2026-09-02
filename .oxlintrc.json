@@ -1,0 +1,37 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "plugins": [
+        "eslint",
+        "typescript",
+        "unicorn",
+        "oxc",
+        "import",
+        "react",
+        "react-perf",
+        "jsx-a11y",
+        "promise",
+        "node"
+    ],
+    "categories": {
+        "correctness": "error"
+    },
+    "rules": {
+        "import/no-unassigned-import": "off",
+        "react/react-in-jsx-scope": "off"
+    },
+    "options": {
+        "typeAware": true,
+        "typeCheck": true,
+        "denyWarnings": true,
+        "reportUnusedDisableDirectives": "error"
+    },
+    "ignorePatterns": [
+        "PocketRisu/**",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/coverage/**",
+        "web/src/routeTree.gen.ts",
+        "web/src/components/ui/**",
+        "server/src/db/migrations/**"
+    ]
+}

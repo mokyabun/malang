@@ -1,0 +1,296 @@
+import type { PromptModuleInput } from '@malang/shared'
+import type { CharacterCardV3 } from '@risuai/ccardlib'
+
+import type { AppConfig } from '@/config'
+import type { Store } from '@/db'
+import { ConflictError } from '@/errors/app-error'
+import { exportCharacterCard, importCharacterCard } from '@/services/app/character-card'
+import {
+    exportPromptModule,
+    importPromptModule,
+    serializeRisuModuleToggles,
+} from '@/services/prompt/module-codec'
+import { mergeLuaTriggers, toRisuRegexScripts } from '@/services/prompt/risu'
+
+import type { AssetStore } from './assets'
+
+export class PromptModuleConflictError extends ConflictError {}
+
+export class PromptModuleService {
+    constructor(
+        private readonly store: Store,
+        private readonly config: AppConfig,
+        private readonly assetStore: AssetStore,
+    ) {}
+
+    list() {
+        return this.store.prompts.listPromptModules().map((module) => this.withAssets(module))
+    }
+
+    get(id: string) {
+        const module = this.store.prompts.getPromptModule(id)
+        return module ? this.withAssets(module) : null
+    }
+
+    create(input: PromptModuleInput) {
+        this.assertNamespaceAvailable(input.namespace)
+        return this.withAssets(this.store.prompts.createPromptModule(input))
+    }
+
+    update(id: string, input: PromptModuleInput) {
+        this.assertNamespaceAvailable(input.namespace, id)
+        const module = this.store.prompts.updatePromptModule(id, input)
+        return module ? this.withAssets(module) : null
+    }
+
+    delete(id: string) {
+        return this.store.prompts.deletePromptModule(id)
+    }
+
+    async import(bytes: Uint8Array, filename: string) {
+        const decoded = filename.toLocaleLowerCase().endsWith('.charx')
+            ? this.importCharx(bytes, filename)
+            : importPromptModule(bytes, filename)
+        this.assertNamespaceAvailable(decoded.input.namespace)
+        const module = this.store.prompts.createPromptModule(
+            decoded.input,
+            decoded.source,
+            decoded.warnings,
+        )
+        const links = []
+        for (const imported of decoded.assets) {
+            const asset = await this.assetStore.put(imported.bytes, imported.mimeType)
+            links.push({
+                id: crypto.randomUUID(),
+                moduleId: module.id,
+                assetId: asset.id,
+                type: imported.type,
+                name: imported.name,
+                extension: imported.extension,
+                sourceUri: imported.sourceUri,
+            })
+        }
+        this.store.prompts.setPromptModuleAssets(module.id, links)
+        return this.withAssets(module)
+    }
+
+    async export(id: string, format: 'json' | 'risum' | 'charx') {
+        const module = this.store.prompts.getPromptModule(id)
+        if (!module) return null
+        const source = this.store.prompts.getPromptModuleSource(id)
+        const input = {
+            name: module.name,
+            description: module.description,
+            namespace: module.namespace,
+            sourceId: module.sourceId,
+            enabledByDefault: module.enabledByDefault,
+            runtimeOrder: module.runtimeOrder,
+            luaScript: module.luaScript,
+            luaRawTriggers: module.luaRawTriggers,
+            prompts: module.prompts,
+            toggles: module.toggles,
+            regexScripts: module.regexScripts,
+            backgroundEmbedding: module.backgroundEmbedding,
+            lorebook: module.lorebook,
+        }
+        const moduleAssets = await Promise.all(
+            this.store.prompts.getPromptModuleAssetLinks(id).map(async (link) => {
+                const asset = this.store.assets.getAsset(link.assetId)
+                const bytes = await this.assetStore.read(link.assetId)
+                return asset && bytes
+                    ? {
+                          bytes,
+                          mimeType: asset.mimeType,
+                          type: link.type,
+                          name: link.name,
+                          extension: link.extension,
+                          sourceUri: link.sourceUri,
+                      }
+                    : null
+            }),
+        )
+        const availableAssets = moduleAssets.filter((asset) => asset !== null)
+        return format === 'charx'
+            ? exportCharacterCard(
+                  { card: moduleCard(input), assets: availableAssets },
+                  'v3',
+                  'charx',
+              ).bytes
+            : exportPromptModule(input, format, availableAssets, source)
+    }
+
+    conversationStates(conversationId: string) {
+        return this.store.conversations
+            .listConversationModuleStates(conversationId)
+            .map((state) => ({
+                ...state,
+                module: this.withAssets(state.module),
+            }))
+    }
+
+    setConversationState(conversationId: string, moduleId: string, enabled: boolean | null) {
+        if (!this.store.prompts.getPromptModule(moduleId)) return false
+        if (enabled === null)
+            this.store.conversations.resetConversationModule(conversationId, moduleId)
+        else this.store.conversations.setConversationModule(conversationId, moduleId, enabled)
+        return true
+    }
+
+    private assertNamespaceAvailable(namespace: string, excludingId?: string) {
+        if (!namespace) return
+        const existing = this.store.prompts.findPromptModuleByNamespace(namespace)
+        if (existing && existing.id !== excludingId) {
+            throw new PromptModuleConflictError(`Module namespace ${namespace} is already in use`)
+        }
+    }
+
+    private withAssets(module: NonNullable<ReturnType<Store['prompts']['getPromptModule']>>) {
+        return {
+            ...module,
+            assets: this.store.prompts.getPromptModuleAssetLinks(module.id).flatMap((link) => {
+                const asset = this.store.assets.getAsset(link.assetId)
+                return asset
+                    ? [
+                          {
+                              assetId: asset.id,
+                              type: link.type,
+                              name: link.name,
+                              extension: link.extension,
+                              sourceUri: link.sourceUri,
+                              mimeType: asset.mimeType,
+                              size: asset.size,
+                          },
+                      ]
+                    : []
+            }),
+        }
+    }
+
+    private importCharx(bytes: Uint8Array, filename: string) {
+        const imported = importCharacterCard(bytes, filename, this.config)
+        const data = imported.card.data
+        const risu = record(data.extensions?.risuai)
+        const source = {
+            type: 'risuModule',
+            name: data.name,
+            description: data.creator_notes,
+            id: crypto.randomUUID(),
+            namespace: stringValue(risu.moduleNamespace),
+            customModuleToggle: stringValue(risu.toggles),
+            regex: risu.customScripts,
+            trigger: risu.triggerscript,
+            backgroundEmbedding: risu.backgroundHTML,
+            lowLevelAccess: risu.lowLevelAccess,
+            assets: data.assets,
+            lorebook: (data.character_book?.entries || []).map((entry) => ({
+                id: entry.id,
+                key: entry.keys?.join(', ') || '',
+                secondkey: entry.secondary_keys?.join(', ') || '',
+                insertorder: entry.insertion_order,
+                comment: entry.name || entry.comment,
+                content: entry.content,
+                mode: entry.constant ? 'constant' : 'normal',
+                alwaysActive: entry.constant,
+                selective: entry.selective,
+                useRegex: entry.use_regex,
+                extentions: { risu_case_sensitive: entry.case_sensitive },
+            })),
+        }
+        const decoded = importPromptModule(
+            new TextEncoder().encode(JSON.stringify(source)),
+            'module.json',
+        )
+        return {
+            ...decoded,
+            source: imported.card as unknown as Record<string, unknown>,
+            warnings: [...decoded.warnings, ...imported.warnings],
+            assets: imported.assets,
+        }
+    }
+}
+
+function moduleCard(input: PromptModuleInput): CharacterCardV3 {
+    const entries: NonNullable<NonNullable<CharacterCardV3['data']['character_book']>['entries']> =
+        input.lorebook.map((entry, index) => ({
+            id: index,
+            keys: entry.keys,
+            secondary_keys: entry.secondaryKeys,
+            content: entry.content,
+            enabled: entry.enabled,
+            constant: entry.constant,
+            selective: entry.selective,
+            case_sensitive: entry.caseSensitive,
+            use_regex: entry.useRegex,
+            insertion_order: entry.insertionOrder,
+            priority: entry.priority,
+            name: entry.name,
+            extensions: {},
+        }))
+    for (const prompt of input.prompts) {
+        if (!prompt.enabled) continue
+        const content = prompt.toggleKey
+            ? `{{#when::toggle::${prompt.toggleKey}}}\n${prompt.content}\n{{/when}}`
+            : prompt.content
+        entries.push({
+            id: entries.length,
+            keys: [],
+            content: `@@indicator ${indicator(prompt.position)}\n\n${content}`,
+            enabled: true,
+            constant: true,
+            selective: false,
+            case_sensitive: false,
+            use_regex: false,
+            insertion_order: 100,
+            name: prompt.name,
+            extensions: {},
+        })
+    }
+    return {
+        spec: 'chara_card_v3',
+        spec_version: '3.0',
+        data: {
+            name: input.name,
+            description: '',
+            personality: '',
+            scenario: '',
+            first_mes: '',
+            mes_example: '',
+            creator_notes: input.description,
+            system_prompt: '',
+            post_history_instructions: '',
+            alternate_greetings: [],
+            tags: [],
+            creator: '',
+            character_version: '1.0',
+            group_only_greetings: [],
+            extensions: {
+                risuai: {
+                    toggles: serializeRisuModuleToggles(input.toggles || []),
+                    moduleNamespace: input.namespace || undefined,
+                    customScripts: toRisuRegexScripts(input.regexScripts || []),
+                    lowLevelAccess: input.luaScript?.lowLevelAccess === true,
+                    triggerscript: mergeLuaTriggers(input.luaRawTriggers, input.luaScript),
+                    backgroundHTML: input.backgroundEmbedding || '',
+                },
+            },
+            character_book: { entries, extensions: {} },
+            assets: [],
+        },
+    }
+}
+
+function indicator(position: PromptModuleInput['prompts'][number]['position']) {
+    if (position === 'afterChat') return 'replace_global_note'
+    if (position === 'beforeChat') return 'character_first_message'
+    return 'character_desc'
+}
+
+function record(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {}
+}
+
+function stringValue(value: unknown): string {
+    return typeof value === 'string' ? value : ''
+}

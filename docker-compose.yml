@@ -1,0 +1,45 @@
+services:
+    malang-server:
+        build: .
+        restart: unless-stopped
+        ports:
+            - '3000:3000'
+        environment:
+            DATA_DIR: /data
+            DATABASE_URL: /data/data.sqlite
+            ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+            SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+            COOKIE_SECURE: ${COOKIE_SECURE:-false}
+            LOG_LEVEL: ${LOG_LEVEL:-info}
+            LOG_PRETTY: ${LOG_PRETTY:-false}
+            LOG_COLORIZE: ${LOG_COLORIZE:-false}
+            GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+        volumes:
+            - malang-data:/data
+            - ${GOOGLE_CREDENTIALS_FILE:-/dev/null}:${GOOGLE_APPLICATION_CREDENTIALS:-/run/secrets/google.json}:ro
+        healthcheck:
+            test:
+                [
+                    'CMD',
+                    'bun',
+                    '-e',
+                    "const r=await fetch('http://127.0.0.1:3000/health/ready');process.exit(r.ok?0:1)",
+                ]
+            interval: 15s
+            timeout: 5s
+            retries: 5
+
+    malang-web:
+        build:
+            context: .
+            dockerfile: web/Dockerfile
+        restart: unless-stopped
+        depends_on:
+            malang-server:
+                condition: service_healthy
+        ports:
+            - '8080:80'
+
+volumes:
+    malang-data:
