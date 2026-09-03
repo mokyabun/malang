@@ -8,6 +8,7 @@ import {
     UploadSimple,
     WarningCircle,
 } from '@phosphor-icons/react'
+import { lazy, Suspense, useRef } from 'react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -22,19 +23,17 @@ import {
 
 import { SectionHeading } from '../../page-heading'
 import { AgentInspector } from './agent-inspector'
-import {
-    firstAgent,
-    findAgent,
-    updateAgent,
-    moveAgentToLayer,
-    deleteAgent,
-    validDraft,
-} from './model'
-import { PipelineCanvas } from './pipeline-canvas'
+import { firstAgent, findAgent, updateAgent, deleteAgent, validDraft } from './model'
 import { PipelineSummary } from './pipeline-summary'
 import { useModelChainEditor, type ModelChainSectionProps } from './use-model-chain-editor'
 
+const PipelineCanvas = lazy(() =>
+    import('./pipeline-canvas').then((module) => ({ default: module.PipelineCanvas })),
+)
+
 export function ModelChainSection({ presets, modelPresets, onChanged }: ModelChainSectionProps) {
+    const canvasRef = useRef<HTMLElement>(null)
+    const inspectorRef = useRef<HTMLElement>(null)
     const {
         importRef,
         dialogOpen,
@@ -61,13 +60,18 @@ export function ModelChainSection({ presets, modelPresets, onChanged }: ModelCha
                 <SectionHeading
                     className="mb-5 pr-12 [&_h2]:text-2xl"
                     title="모델 체이닝"
-                    description="같은 레이어는 동시에, 레이어 사이는 위에서 아래로 실행됩니다. 채팅의 기본 동작은 단일 모델입니다."
+                    description="노드를 연결해 모델 실행 흐름을 구성하세요. 노드를 자유롭게 추가하고 연결할 수 있습니다."
                 />
-                {notice ? (
+                {notice && !dialogOpen ? (
                     <Alert className="mb-4 border-destructive/30 bg-destructive/5 text-destructive">
                         <WarningCircle aria-hidden="true" />
                         <AlertDescription>{notice}</AlertDescription>
                     </Alert>
+                ) : null}
+                {!modelPresets.length ? (
+                    <p className="mb-4 text-sm text-muted-foreground">
+                        먼저 모델 프리셋을 하나 이상 만들어 주세요.
+                    </p>
                 ) : null}
                 <div className="overflow-hidden rounded-lg border border-border bg-card">
                     <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
@@ -101,7 +105,7 @@ export function ModelChainSection({ presets, modelPresets, onChanged }: ModelCha
                                             {preset.description || '설명 없음'}
                                         </span>
                                     </span>
-                                    <PipelineSummary layers={preset.layers} />
+                                    <PipelineSummary preset={preset} />
                                     <span className="hidden text-xs text-muted-foreground group-hover:text-foreground sm:block">
                                         편집
                                     </span>
@@ -121,7 +125,7 @@ export function ModelChainSection({ presets, modelPresets, onChanged }: ModelCha
                                     첫 파이프라인을 만들어 보세요
                                 </strong>
                                 <span className="mt-1 block text-xs text-muted-foreground">
-                                    레이어를 추가하고 여러 에이전트를 동시에 배치할 수 있습니다.
+                                    모델 노드를 추가하고 연결점을 드래그해 실행 흐름을 구성하세요.
                                 </span>
                             </span>
                         </button>
@@ -140,8 +144,16 @@ export function ModelChainSection({ presets, modelPresets, onChanged }: ModelCha
                 }}
             />
 
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="h-[min(58rem,calc(100dvh-1rem))] w-[min(86rem,calc(100%-1rem))] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-card p-0 sm:max-w-none">
+            <Dialog
+                open={dialogOpen}
+                onOpenChange={(open) => {
+                    if (!saving) setDialogOpen(open)
+                }}
+            >
+                <DialogContent
+                    className="h-[min(58rem,calc(100dvh-1rem))] w-[min(96rem,calc(100%-1rem))] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-card p-0 sm:max-w-none"
+                    showCloseButton={!saving}
+                >
                     {draft ? (
                         <>
                             <DialogHeader className="border-b border-border px-5 py-4 pr-14 sm:px-6">
@@ -151,12 +163,17 @@ export function ModelChainSection({ presets, modelPresets, onChanged }: ModelCha
                                             {editingId ? '파이프라인 수정' : '새 파이프라인'}
                                         </DialogTitle>
                                         <DialogDescription>
-                                            레이어 내부는 동시 실행되고 다음 레이어는 이전 결과를
-                                            이어받습니다.
+                                            노드를 연결해 실행 흐름을 만들고, 노드를 선택해 모델과
+                                            프롬프트를 편집하세요.
                                         </DialogDescription>
                                     </div>
                                     <div className="mr-5 flex items-center gap-1">
-                                        <Button variant="ghost" size="sm" onClick={exportDraft}>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={exportDraft}
+                                            disabled={saving}
+                                        >
                                             <DownloadSimple />
                                             내보내기
                                         </Button>
@@ -164,44 +181,62 @@ export function ModelChainSection({ presets, modelPresets, onChanged }: ModelCha
                                             variant="ghost"
                                             size="sm"
                                             onClick={() => importRef.current?.click()}
+                                            disabled={saving}
                                         >
                                             <UploadSimple />
                                             가져오기
                                         </Button>
                                     </div>
                                 </div>
+                                {notice ? (
+                                    <Alert className="mt-3 border-destructive/30 bg-destructive/5 text-destructive">
+                                        <WarningCircle aria-hidden="true" />
+                                        <AlertDescription>{notice}</AlertDescription>
+                                    </Alert>
+                                ) : null}
                             </DialogHeader>
 
-                            <div className="grid min-h-0 overflow-y-auto lg:grid-cols-[minmax(0,1.65fr)_minmax(23rem,0.8fr)] lg:overflow-hidden">
-                                <PipelineCanvas
-                                    draft={draft}
-                                    selectedAgentId={selectedAgentId}
-                                    modelPresetId={modelPresets[0]?.id ?? ''}
-                                    onChange={setDraft}
-                                    onSelect={setSelectedAgentId}
-                                />
+                            <fieldset
+                                disabled={saving}
+                                className="min-h-0 min-w-0 overflow-y-auto border-0 p-0 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:overflow-hidden"
+                            >
+                                <Suspense
+                                    fallback={
+                                        <output className="grid min-h-80 place-items-center text-sm text-muted-foreground">
+                                            노드 편집기를 불러오는 중입니다…
+                                        </output>
+                                    }
+                                >
+                                    <PipelineCanvas
+                                        draft={draft}
+                                        disabled={saving}
+                                        selectedAgentId={selectedAgentId}
+                                        modelPresets={modelPresets}
+                                        onChange={setDraft}
+                                        onSelect={setSelectedAgentId}
+                                        panelRef={canvasRef}
+                                        onInspect={() =>
+                                            inspectorRef.current?.scrollIntoView({ block: 'start' })
+                                        }
+                                    />
+                                </Suspense>
                                 <AgentInspector
+                                    panelRef={inspectorRef}
+                                    onShowCanvas={() =>
+                                        canvasRef.current?.scrollIntoView({ block: 'start' })
+                                    }
                                     selection={findAgent(draft, selectedAgentId)}
-                                    layers={draft.layers}
                                     modelPresets={modelPresets}
                                     showPreview={showPreview}
                                     onPreview={() => setShowPreview((value) => !value)}
                                     onChange={(agent) => setDraft(updateAgent(draft, agent))}
-                                    onMove={(layerId) => {
-                                        const next = moveAgentToLayer(
-                                            draft,
-                                            selectedAgentId,
-                                            layerId,
-                                        )
-                                        setDraft(next)
-                                    }}
                                     onDelete={() => {
                                         const next = deleteAgent(draft, selectedAgentId)
                                         setDraft(next)
                                         setSelectedAgentId(firstAgent(next)?.id ?? null)
                                     }}
                                 />
-                            </div>
+                            </fieldset>
 
                             <DialogFooter className="items-center justify-between border-t border-border bg-muted/25 px-5 py-3 sm:px-6">
                                 <div className="flex items-center gap-1 self-stretch sm:self-auto">
@@ -220,6 +255,7 @@ export function ModelChainSection({ presets, modelPresets, onChanged }: ModelCha
                                         variant="ghost"
                                         size="sm"
                                         onClick={() => beginCreate(draft)}
+                                        disabled={saving}
                                     >
                                         <Copy />
                                         복사본
@@ -230,13 +266,26 @@ export function ModelChainSection({ presets, modelPresets, onChanged }: ModelCha
                                         variant="outline"
                                         size="sm"
                                         onClick={() => setDialogOpen(false)}
+                                        disabled={saving}
                                     >
                                         취소
                                     </Button>
                                     <Button
                                         size="sm"
                                         onClick={() => void savePreset()}
-                                        disabled={saving || !validDraft(draft)}
+                                        disabled={
+                                            saving ||
+                                            !validDraft(draft) ||
+                                            draft.layers.some((layer) =>
+                                                layer.agents.some(
+                                                    (agent) =>
+                                                        !modelPresets.some(
+                                                            (preset) =>
+                                                                preset.id === agent.modelPresetId,
+                                                        ),
+                                                ),
+                                            )
+                                        }
                                     >
                                         <Check />
                                         {saving ? '저장 중' : '파이프라인 저장'}

@@ -119,7 +119,7 @@ function mapModelChainPreset(row: typeof modelChainPresets.$inferSelect): ModelC
         id: row.id,
         name: row.name,
         description: row.description,
-        layers: config.layers,
+        ...config,
         sortOrder: row.sortOrder,
         createdAt: iso(row.createdAt),
         updatedAt: iso(row.updatedAt),
@@ -128,16 +128,19 @@ function mapModelChainPreset(row: typeof modelChainPresets.$inferSelect): ModelC
 
 function serializeChainConfig(input: ModelChainPresetInput): string {
     return JSON.stringify({
-        version: 2,
+        version: input.graph ? 3 : 2,
         layers: input.layers,
+        ...(input.graph ? { graph: input.graph } : {}),
     })
 }
 
-function parseChainConfig(raw: string): Pick<ModelChainPreset, 'layers'> {
+function parseChainConfig(raw: string): Pick<ModelChainPreset, 'layers' | 'graph'> {
     const parsed = parseJson<unknown>(raw, [])
     if (!Array.isArray(parsed) && Array.isArray((parsed as { layers?: unknown[] }).layers)) {
+        const config = parsed as Pick<ModelChainPreset, 'layers' | 'graph'>
         return {
-            layers: (parsed as { layers: ModelChainLayer[] }).layers.map(normalizeLayer),
+            layers: config.layers.map((layer) => normalizeLayer(layer, Boolean(config.graph))),
+            ...(config.graph ? { graph: config.graph } : {}),
         }
     }
 
@@ -184,7 +187,7 @@ function legacyLayers(
         return [
             {
                 id: agents[0]!.id,
-                name: phase === 'pre' ? '사전 분석' : '후처리',
+                name: '모델 흐름',
                 phase,
                 agents,
             },
@@ -192,13 +195,13 @@ function legacyLayers(
     }
     return agents.map((agent, index) => ({
         id: agent.id,
-        name: `${phase === 'pre' ? '사전 분석' : '후처리'} ${index + 1}`,
+        name: `모델 흐름 ${index + 1}`,
         phase,
         agents: [agent],
     }))
 }
 
-function normalizeLayer(layer: ModelChainLayer): ModelChainLayer {
+function normalizeLayer(layer: ModelChainLayer, graph = false): ModelChainLayer {
     return {
         id: layer.id,
         name: layer.name,
@@ -206,7 +209,7 @@ function normalizeLayer(layer: ModelChainLayer): ModelChainLayer {
         agents: Array.isArray(layer.agents)
             ? layer.agents.map((agent) => ({
                   ...normalizeAgent(agent),
-                  memoryEnabled: layer.phase === 'pre' && agent.memoryEnabled === true,
+                  memoryEnabled: (graph || layer.phase === 'pre') && agent.memoryEnabled === true,
               }))
             : [],
     }

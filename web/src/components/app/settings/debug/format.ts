@@ -10,5 +10,5 @@ export function formatTimestamp(value: string) {
 }
 
 export function chainPhaseLabel(phase: 'pre' | 'post') {
-    return phase === 'pre' ? '사전 처리' : '후처리'
+    return phase === 'pre' ? '노드 결과 생성' : '응답 반영'
 }

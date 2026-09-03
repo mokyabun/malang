@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 
+import { CHAIN_MAIN_NODE_ID, planChainExecution } from '@malang/shared'
 import type {
     ApiError,
+    ChainExecutionNode,
     CompiledMessage,
     GenerationEvent,
     GenerationParameters,
@@ -285,81 +287,68 @@ export class GenerationService {
                     const runtimeProvider =
                         await this.providers.requireRuntimeForConversation(conversationId)
                     const adapter = providerFor(runtimeProvider)
-                    let chainNotes: ChainNote[] = []
-                    if (modelChain) {
-                        chainNotes = await this.runPreChain({
-                            preset: modelChain,
-                            context: chainContext!,
-                            generationId,
-                            conversationId,
-                            requestDebugEnabled: context.settings.requestDebugEnabled,
+                    const generateMain = async (notes: ChainNote[]) => {
+                        for await (const chunk of adapter.streamChat(runtimeProvider, {
+                            messages: injectChainNotes(preview.messages, notes),
+                            parameters,
                             signal: abortController.signal,
-                        })
-                        preview = {
-                            ...preview,
-                            messages: injectChainNotes(preview.messages, chainNotes),
+                            ...(context.settings.requestDebugEnabled
+                                ? {
+                                      onRequest: (snapshot) => {
+                                          try {
+                                              this.store.generations.createRequestDebugRecord({
+                                                  generationId,
+                                                  conversationId,
+                                                  provider: providerConfig.provider,
+                                                  modelId: providerConfig.modelId,
+                                                  parameters,
+                                                  request: snapshot,
+                                              })
+                                          } catch (error) {
+                                              this.log.warn(
+                                                  { event: 'request_debug.capture_failed', error },
+                                                  'Failed to capture provider request',
+                                              )
+                                          }
+                                      },
+                                  }
+                                : {}),
+                        })) {
+                            if (chunk.delta) {
+                                content += chunk.delta
+                                send({
+                                    type: 'message.delta',
+                                    generationId,
+                                    messageId,
+                                    delta: chunk.delta,
+                                })
+                            }
+                            if (chunk.usage) usage = chunk.usage
+                            if (
+                                content.length - checkpointLength >= 512 ||
+                                Date.now() - checkpointAt >= 1_000
+                            ) {
+                                this.store.conversations.updateMessage(messageId, {
+                                    content,
+                                    status: 'streaming',
+                                })
+                                checkpointLength = content.length
+                                checkpointAt = Date.now()
+                            }
                         }
+                        return content
                     }
-                    for await (const chunk of adapter.streamChat(runtimeProvider, {
-                        messages: preview.messages,
-                        parameters,
-                        signal: abortController.signal,
-                        ...(context.settings.requestDebugEnabled
-                            ? {
-                                  onRequest: (snapshot) => {
-                                      try {
-                                          this.store.generations.createRequestDebugRecord({
-                                              generationId,
-                                              conversationId,
-                                              provider: providerConfig.provider,
-                                              modelId: providerConfig.modelId,
-                                              parameters,
-                                              request: snapshot,
-                                          })
-                                      } catch (error) {
-                                          this.log.warn(
-                                              { event: 'request_debug.capture_failed', error },
-                                              'Failed to capture provider request',
-                                          )
-                                      }
-                                  },
-                              }
-                            : {}),
-                    })) {
-                        if (chunk.delta) {
-                            content += chunk.delta
-                            send({
-                                type: 'message.delta',
-                                generationId,
-                                messageId,
-                                delta: chunk.delta,
-                            })
-                        }
-                        if (chunk.usage) usage = chunk.usage
-                        if (
-                            content.length - checkpointLength >= 512 ||
-                            Date.now() - checkpointAt >= 1_000
-                        ) {
-                            this.store.conversations.updateMessage(messageId, {
-                                content,
-                                status: 'streaming',
-                            })
-                            checkpointLength = content.length
-                            checkpointAt = Date.now()
-                        }
-                    }
-                    if (modelChain) {
-                        content = await this.runPostChain({
-                            preset: modelChain,
-                            context: chainContext!,
-                            notes: chainNotes,
-                            content,
-                            generationId,
-                            conversationId,
-                            requestDebugEnabled: context.settings.requestDebugEnabled,
-                            signal: abortController.signal,
-                        })
-                    }
+                    content = modelChain
+                        ? await this.runModelChain({
+                              preset: modelChain,
+                              context: chainContext!,
+                              generationId,
+                              conversationId,
+                              requestDebugEnabled: context.settings.requestDebugEnabled,
+                              signal: abortController.signal,
+                              generateMain,
+                          })
+                        : await generateMain([])
                     const luaOutput = await this.lua.executeEvent({
                         conversationId,
                         eventKey: request.idempotencyKey,
@@ -484,142 +473,116 @@ export class GenerationService {
         return true
     }
 
-    private async runPreChain(input: {
+    private async runModelChain(input: {
         preset: ModelChainPreset
         context: ChainExecutionContext
         generationId: string
         conversationId: string
         requestDebugEnabled: boolean
         signal: AbortSignal
-    }): Promise<ChainNote[]> {
-        const notes: ChainNote[] = []
-        for (const layer of input.preset.layers.filter((layer) => layer.phase === 'pre')) {
-            const previousNotes = [...notes]
-            const results = await Promise.all(
-                layer.agents
-                    .filter((agent) => agent.enabled)
-                    .map(async (agent) => {
-                        try {
-                            const memory = agent.memoryEnabled
-                                ? this.store.modelChains.getAgentMemory(
-                                      input.conversationId,
-                                      agent.id,
-                                  )
-                                : ''
-                            const raw = await this.completeChainAgent(
-                                agent,
-                                preChainMessages(agent, input.context, previousNotes, memory),
-                                {
-                                    ...input,
-                                    chain: {
-                                        presetId: input.preset.id,
-                                        presetName: input.preset.name,
-                                        phase: 'pre',
-                                        layerId: layer.id,
-                                        layerName: layer.name,
-                                        agentId: agent.id,
-                                        agentName: agent.name,
-                                    },
-                                },
-                            )
-                            const result = parseAgentMemoryOutput(raw, agent.memoryEnabled)
-                            if (agent.memoryEnabled && result.memoryUpdate) {
-                                this.store.modelChains.setAgentMemory(
-                                    input.conversationId,
-                                    agent.id,
-                                    result.memoryUpdate,
-                                )
-                            }
-                            return result.note
-                                ? {
-                                      agentId: agent.id,
-                                      agentName: agent.name,
-                                      layerId: layer.id,
-                                      layerName: layer.name,
-                                      content: result.note,
-                                  }
-                                : null
-                        } catch (error) {
-                            if (input.signal.aborted) throw error
-                            this.log.warn(
-                                {
-                                    event: 'model_chain.pre_agent_failed',
-                                    generationId: input.generationId,
-                                    chainPresetId: input.preset.id,
-                                    layerId: layer.id,
-                                    agentId: agent.id,
-                                    error,
-                                },
-                                'Pre-chain agent failed; continuing with the next layer',
-                            )
-                            return null
-                        }
-                    }),
-            )
-            notes.push(...results.filter((note): note is ChainNote => note !== null))
-        }
-        return notes
-    }
-
-    private async runPostChain(input: {
-        preset: ModelChainPreset
-        context: ChainExecutionContext
-        notes: ChainNote[]
-        content: string
-        generationId: string
-        conversationId: string
-        requestDebugEnabled: boolean
-        signal: AbortSignal
+        generateMain: (notes: ChainNote[]) => Promise<string>
     }): Promise<string> {
-        let current = input.content
-        for (const layer of input.preset.layers.filter((layer) => layer.phase === 'post')) {
-            const source = current
+        const plan = planChainExecution(input.preset)
+        if (!plan.batches.flat().some((node) => node.agent === null)) {
+            throw new Error('The model chain cannot reach the main response due to a cycle')
+        }
+        let mainResponse = ''
+        const completed: { node: ChainExecutionNode; output: string }[] = []
+        for (const batch of plan.batches) {
+            input.signal.throwIfAborted()
             const results = await Promise.all(
-                layer.agents
-                    .filter((agent) => agent.enabled)
-                    .map(async (agent) => {
-                        try {
-                            const output = await this.completeChainAgent(
-                                agent,
-                                postChainMessages(agent, input.context, input.notes, source),
-                                {
-                                    ...input,
-                                    chain: {
-                                        presetId: input.preset.id,
-                                        presetName: input.preset.name,
-                                        phase: 'post',
-                                        layerId: layer.id,
-                                        layerName: layer.name,
-                                        agentId: agent.id,
-                                        agentName: agent.name,
-                                    },
-                                },
-                            )
-                            return output ? { agent, output } : null
-                        } catch (error) {
-                            if (input.signal.aborted) throw error
-                            this.log.warn(
-                                {
-                                    event: 'model_chain.post_agent_failed',
-                                    generationId: input.generationId,
-                                    chainPresetId: input.preset.id,
+                batch.map(async (node) => {
+                    const previous = completed.filter((result) =>
+                        node.ancestors.has(result.node.id),
+                    )
+                    const notes = previous
+                        .filter((result) => !result.node.ancestors.has(CHAIN_MAIN_NODE_ID))
+                        .map(({ node: { agent, layer }, output }) => ({
+                            agentId: agent.id,
+                            agentName: agent.name,
+                            layerId: layer.id,
+                            layerName: layer.name,
+                            content: output,
+                        }))
+                    if (node.agent === null) {
+                        mainResponse = await input.generateMain(notes)
+                        return null
+                    }
+                    const { agent, layer, ancestors } = node
+                    if (!agent.enabled) return null
+                    const receivesResponse = ancestors.has(CHAIN_MAIN_NODE_ID)
+                    const response = receivesResponse
+                        ? previous
+                              .filter((result) => result.node.ancestors.has(CHAIN_MAIN_NODE_ID))
+                              .reduce(
+                                  (text, result) =>
+                                      applyPostMode(
+                                          result.node.agent.postMode,
+                                          text,
+                                          result.output,
+                                      ),
+                                  mainResponse,
+                              )
+                        : undefined
+                    try {
+                        const memory = agent.memoryEnabled
+                            ? this.store.modelChains.getAgentMemory(input.conversationId, agent.id)
+                            : ''
+                        const raw = await this.completeChainAgent(
+                            agent,
+                            chainAgentMessages(agent, input.context, notes, memory, response),
+                            {
+                                ...input,
+                                chain: {
+                                    presetId: input.preset.id,
+                                    presetName: input.preset.name,
+                                    // Retain the debug contract; graph ancestry determines the input.
+                                    phase: receivesResponse ? 'post' : 'pre',
                                     layerId: layer.id,
+                                    layerName: layer.name,
                                     agentId: agent.id,
-                                    error,
+                                    agentName: agent.name,
                                 },
-                                'Post-chain agent failed; keeping the latest response',
+                            },
+                        )
+                        input.signal.throwIfAborted()
+                        const result = parseAgentMemoryOutput(raw, agent.memoryEnabled)
+                        if (agent.memoryEnabled && result.memoryUpdate) {
+                            this.store.modelChains.setAgentMemory(
+                                input.conversationId,
+                                agent.id,
+                                result.memoryUpdate,
                             )
-                            return null
                         }
-                    }),
+                        return result.note ? { node, output: result.note } : null
+                    } catch (error) {
+                        if (input.signal.aborted) throw error
+                        this.log.warn(
+                            {
+                                event: 'model_chain.agent_failed',
+                                generationId: input.generationId,
+                                chainPresetId: input.preset.id,
+                                layerId: layer.id,
+                                agentId: agent.id,
+                                error,
+                            },
+                            'Model-chain agent failed; continuing along the graph',
+                        )
+                        return null
+                    }
+                }),
             )
+            // Commit in graph order, independent of provider completion timing.
             for (const result of results) {
-                if (result) {
-                    current = applyPostMode(result.agent.postMode, current, result.output)
-                }
+                if (result) completed.push(result)
             }
         }
-        return current
+        return completed
+            .filter((result) => result.node.ancestors.has(CHAIN_MAIN_NODE_ID))
+            .reduce(
+                (text, result) => applyPostMode(result.node.agent.postMode, text, result.output),
+                mainResponse,
+            )
     }
 
     private async completeChainAgent(
@@ -869,19 +832,28 @@ interface ChainExecutionContext {
     currentUserInput: string
 }
 
-function preChainMessages(
+function chainAgentMessages(
     agent: ModelChainAgent,
     context: ChainExecutionContext,
     notes: ChainNote[],
     memory: string,
+    response?: string,
 ): CompiledMessage[] {
+    const outputInstruction =
+        response === undefined
+            ? '지시된 작업의 결과를 출력하세요. 결과는 연결된 다음 노드에 전달됩니다.'
+            : agent.postMode === 'prepend'
+              ? '현재 응답 앞에 붙일 텍스트만 출력하고 현재 응답은 반복하지 마세요.'
+              : agent.postMode === 'append'
+                ? '현재 응답 뒤에 붙일 텍스트만 출력하고 현재 응답은 반복하지 마세요.'
+                : '사용자에게 보일 최종 응답 전체만 출력하세요. 분석이나 변경 설명은 쓰지 마세요.'
     const systemPrompt = [
-        agent.systemPrompt || '당신은 메인 응답을 준비하는 분석 에이전트입니다.',
-        '최종 답변을 작성하지 말고 메인 모델이 참고할 간결한 분석 메모만 출력하세요.',
+        agent.systemPrompt || '당신은 연결된 모델 흐름에서 지시된 작업을 수행하는 에이전트입니다.',
+        outputInstruction,
         agent.memoryEnabled
             ? [
                   '응답을 반드시 아래 두 태그로 나누세요.',
-                  '[AGENT_NOTE]메인 모델에 전달할 이번 분석[/AGENT_NOTE]',
+                  '[AGENT_NOTE]다음 노드에 전달할 이번 작업 결과[/AGENT_NOTE]',
                   '[MEMORY_UPDATE]다음 턴에 유지할 최신 기억 전체[/MEMORY_UPDATE]',
               ].join('\n')
             : '',
@@ -889,6 +861,7 @@ function preChainMessages(
         .filter(Boolean)
         .join('\n\n')
     const sections = contextSections(agent, context, notes)
+    if (response !== undefined) sections.push(`[현재 응답]\n${response}`)
     if (agent.memoryEnabled) {
         sections.push(`[에이전트 기억]\n${memory || '(저장된 기억 없음)'}`)
         if (agent.memoryInstruction) {
@@ -901,43 +874,7 @@ function preChainMessages(
             { role: 'system', content: systemPrompt },
             {
                 role: 'user',
-                content:
-                    sections.join('\n\n') ||
-                    '현재 요청을 검토하여 메인 모델용 분석 메모를 작성하세요.',
-            },
-        ],
-        agent,
-    )
-}
-
-function postChainMessages(
-    agent: ModelChainAgent,
-    context: ChainExecutionContext,
-    notes: ChainNote[],
-    response: string,
-): CompiledMessage[] {
-    const modeInstruction =
-        agent.postMode === 'prepend'
-            ? '현재 응답 앞에 붙일 텍스트만 출력하고 현재 응답은 반복하지 마세요.'
-            : agent.postMode === 'append'
-              ? '현재 응답 뒤에 붙일 텍스트만 출력하고 현재 응답은 반복하지 마세요.'
-              : '사용자에게 보일 최종 응답 전체만 출력하세요. 분석이나 변경 설명은 쓰지 마세요.'
-    return appendAgentInstruction(
-        [
-            {
-                role: 'system',
-                content: [
-                    agent.systemPrompt || '당신은 메인 모델 응답을 검수하는 후처리 에이전트입니다.',
-                    modeInstruction,
-                ]
-                    .filter(Boolean)
-                    .join('\n\n'),
-            },
-            {
-                role: 'user',
-                content: [...contextSections(agent, context, notes), `[현재 응답]\n${response}`]
-                    .filter(Boolean)
-                    .join('\n\n'),
+                content: sections.join('\n\n') || '현재 요청에 대해 지시된 작업을 수행하세요.',
             },
         ],
         agent,
@@ -976,7 +913,7 @@ function contextSections(
             ? `[현재 유저 입력]\n${context.currentUserInput}`
             : '',
         agent.includePreviousNotes && notes.length
-            ? `[이전 레이어 노트]\n${formatChainNotes(notes)}`
+            ? `[이전 연결 노드의 결과]\n${formatChainNotes(notes)}`
             : '',
     ].filter(Boolean)
 }
@@ -1043,7 +980,7 @@ function injectChainNotes(messages: CompiledMessage[], notes: ChainNote[]): Comp
         {
             role: 'system',
             content: [
-                '[모델 체이닝 사전 분석]',
+                '[이전 연결 노드의 결과]',
                 formatChainNotes(notes),
                 '위 메모를 참고하되 사용자에게 분석 과정은 노출하지 말고 최종 답변만 작성하세요.',
             ].join('\n\n'),

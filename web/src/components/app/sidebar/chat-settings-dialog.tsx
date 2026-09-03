@@ -325,7 +325,7 @@ export function ChatSettingsDialog({
                                                         응답 흐름
                                                     </strong>
                                                     <small className="text-[10px] leading-4 text-muted-foreground">
-                                                        체인은 서버에서 사전 분석과 후처리를
+                                                        체인은 서버에서 연결된 노드의 흐름에 따라
                                                         실행합니다.
                                                     </small>
                                                 </div>

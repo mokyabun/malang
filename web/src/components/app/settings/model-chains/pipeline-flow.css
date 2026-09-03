@@ -1,0 +1,74 @@
+.chain-flow .react-flow {
+    --xy-background-color: var(--background);
+    --xy-controls-button-background-color: var(--card);
+    --xy-controls-button-background-color-hover: var(--muted);
+    --xy-controls-button-color: var(--foreground);
+    --xy-controls-button-color-hover: var(--foreground);
+    --xy-controls-button-border-color: var(--border);
+    --xy-minimap-background-color: var(--card);
+    --xy-attribution-background-color: var(--card);
+    --xy-edge-stroke: var(--muted-foreground);
+    --xy-handle-background-color: var(--muted-foreground);
+    --xy-handle-border-color: var(--card);
+}
+
+.chain-flow .react-flow__handle {
+    width: 12px;
+    height: 12px;
+}
+
+.chain-flow .react-flow__node:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 4px;
+}
+
+.chain-flow .react-flow__controls {
+    box-shadow: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.chain-flow .react-flow__controls-button {
+    width: 36px;
+    height: 36px;
+}
+
+.chain-flow .react-flow__controls-button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -3px;
+}
+
+.chain-flow .react-flow__minimap {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.chain-flow .react-flow__attribution a {
+    color: var(--muted-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chain-flow * {
+        transition: none !important;
+    }
+}
+
+.chain-flow .react-flow__edge-path {
+    stroke: var(--muted-foreground);
+    stroke-width: 1.5;
+}
+
+/* Keep the clickable stroke usable even when the graph is zoomed out. */
+.chain-flow .react-flow__edge.selectable .react-flow__edge-interaction {
+    pointer-events: stroke;
+    stroke: transparent;
+    cursor: pointer;
+}
+
+.chain-flow .react-flow__edge.selectable:hover .react-flow__edge-path,
+.chain-flow .react-flow__edge.selectable:focus-visible .react-flow__edge-path,
+.chain-flow .react-flow__edge.selected .react-flow__edge-path {
+    stroke: var(--primary);
+    stroke-width: 3;
+}

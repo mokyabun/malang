@@ -11,6 +11,7 @@ import {
     normalizeImportedChain,
     safeFilename,
     errorText,
+    validDraft,
 } from './model'
 
 export type ModelChainSectionProps = {
@@ -52,7 +53,23 @@ export function useModelChainEditor({ modelPresets, onChanged }: ModelChainSecti
         onChanged(result.presets)
     }
     async function savePreset() {
-        if (!draft) return
+        if (!draft || saving) return
+        if (!validDraft(draft)) {
+            setNotice('이름, 모델과 노드 연결을 확인해 주세요.')
+            return
+        }
+        if (
+            draft.layers.some((layer) =>
+                layer.agents.some(
+                    (agent) => !modelPresets.some((preset) => preset.id === agent.modelPresetId),
+                ),
+            )
+        ) {
+            setNotice(
+                '사용할 수 없는 모델 프리셋이 있습니다. 에이전트의 모델을 다시 선택해 주세요.',
+            )
+            return
+        }
         setSaving(true)
         setNotice('')
         try {

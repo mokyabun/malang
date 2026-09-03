@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+import { chainGraphError } from './model-chain-graph'
+export * from './model-chain-graph'
+
 /** Stable identity for the built-in, non-removable general chat character. */
 export const GENERAL_CHAT_CHARACTER_ID = '00000000-0000-4000-8000-000000000001'
 
@@ -245,11 +248,31 @@ export const ModelChainLayerSchema = z.object({
     agents: z.array(ModelChainAgentSchema).min(1).max(8),
 })
 
+export const ModelChainGraphSchema = z.object({
+    edges: z
+        .array(
+            z.object({
+                id: z.string().min(1).max(200),
+                source: z.string().min(1).max(100),
+                target: z.string().min(1).max(100),
+            }),
+        )
+        .max(1056),
+    positions: z.record(
+        z.string().max(100),
+        z.object({
+            x: z.number().finite(),
+            y: z.number().finite(),
+        }),
+    ),
+})
+
 export const ModelChainPresetSchema = z.object({
     id: IdSchema,
     name: z.string().min(1).max(100),
     description: z.string().max(1_000),
-    layers: z.array(ModelChainLayerSchema).min(1).max(12),
+    layers: z.array(ModelChainLayerSchema).max(32),
+    graph: ModelChainGraphSchema.optional(),
     sortOrder: z.number().int().nonnegative(),
     createdAt: TimestampSchema,
     updatedAt: TimestampSchema,
@@ -259,7 +282,15 @@ export const ModelChainPresetInputSchema = ModelChainPresetSchema.pick({
     name: true,
     description: true,
     layers: true,
+    graph: true,
 }).superRefine((preset, context) => {
+    if (!preset.graph && (preset.layers.length < 1 || preset.layers.length > 12)) {
+        context.addIssue({
+            code: 'custom',
+            path: ['layers'],
+            message: 'Legacy chains require 1–12 layers',
+        })
+    }
     const layerIds = new Set<string>()
     const agentIds = new Set<string>()
     let agentCount = 0
@@ -281,7 +312,7 @@ export const ModelChainPresetInputSchema = ModelChainPresetSchema.pick({
                     message: 'Model chain agent IDs must be unique',
                 })
             }
-            if (layer.phase === 'post' && agent.memoryEnabled) {
+            if (!preset.graph && layer.phase === 'post' && agent.memoryEnabled) {
                 context.addIssue({
                     code: 'custom',
                     path: ['layers', layerIndex, 'agents', agentIndex, 'memoryEnabled'],
@@ -297,6 +328,10 @@ export const ModelChainPresetInputSchema = ModelChainPresetSchema.pick({
             path: ['layers'],
             message: 'Model chains support at most 32 agents',
         })
+    }
+    if (preset.graph) {
+        const error = chainGraphError(preset)
+        if (error) context.addIssue({ code: 'custom', path: ['graph'], message: error })
     }
 })
 
@@ -1142,6 +1177,7 @@ export type ModelChainStep = ModelChainAgent
 export type ModelChainLayer = z.infer<typeof ModelChainLayerSchema>
 export type ModelChainPreset = z.infer<typeof ModelChainPresetSchema>
 export type ModelChainPresetInput = z.infer<typeof ModelChainPresetInputSchema>
+export type ModelChainGraph = z.infer<typeof ModelChainGraphSchema>
 export type ModelDiscoveryInput = z.infer<typeof ModelDiscoveryInputSchema>
 export type PocketRisuProfileField = z.infer<typeof PocketRisuProfileFieldSchema>
 export type PocketRisuModelProfileEnvelope = z.infer<typeof PocketRisuModelProfileEnvelopeSchema>

@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { GENERAL_CHAT_CHARACTER_ID, type ModelChainAgent } from '@malang/shared'
+import {
+    chainAgentNodeId,
+    CHAIN_MAIN_NODE_ID,
+    ModelChainPresetInputSchema,
+    GENERAL_CHAT_CHARACTER_ID,
+    type ModelChainAgent,
+} from '@malang/shared'
 
 import type { AppConfig } from '../src/config'
 import { type AppContext, createContext } from '../src/services'
@@ -192,6 +198,136 @@ describe('server-side model chains', () => {
             'MAIN\n\nPOST A\n\nPOST B',
         )
         expect(elapsedMs).toBeLessThan(520)
+    })
+
+    test('persists free graphs, runs side branches and never calls disconnected models', async () => {
+        const createEcho = (name: string, message: string) =>
+            context.store.providers.createModelPreset({
+                name,
+                apiKeyId: null,
+                config: {
+                    provider: 'echo',
+                    modelId: name.toLowerCase(),
+                    defaults: {},
+                    providerOptions: { message },
+                },
+            })
+        const mainModel = createEcho('GraphMain', 'MAIN')
+        const makeAgent = (name: string, postMode: ModelChainAgent['postMode'] = 'replace') =>
+            chainAgent(name, createEcho(name, `OUTPUT_${name}`).id, { postMode })
+        const a = makeAgent('A')
+        const b = makeAgent('B')
+        const c = makeAgent('C')
+        const d = makeAgent('D')
+        const side = makeAgent('Side')
+        const postA = makeAgent('PostA', 'append')
+        const postB = makeAgent('PostB', 'append')
+        const postC = makeAgent('PostC', 'append')
+        const postJoin = makeAgent('PostJoin', 'append')
+        const orphan = chainAgent(
+            'Orphan',
+            createEcho('Orphan', '[AGENT_NOTE]bad[/AGENT_NOTE][MEMORY_UPDATE]bad[/MEMORY_UPDATE]')
+                .id,
+            { memoryEnabled: true },
+        )
+        const detached = makeAgent('Detached')
+        const agents = [postJoin, d, c, a, b, side, postA, postB, postC, orphan, detached]
+        const id = chainAgentNodeId
+        const main = CHAIN_MAIN_NODE_ID
+        const pairs = [
+            [id(a.id), id(b.id)],
+            [id(a.id), id(c.id)],
+            [id(b.id), id(d.id)],
+            [id(c.id), id(d.id)],
+            [id(d.id), main],
+            [id(a.id), id(side.id)],
+            [main, id(postA.id)],
+            [id(postA.id), id(postB.id)],
+            [id(postA.id), id(postC.id)],
+            [id(postB.id), id(postJoin.id)],
+            [id(postC.id), id(postJoin.id)],
+            [id(orphan.id), id(detached.id)],
+        ]
+        const input = ModelChainPresetInputSchema.parse({
+            name: 'Free graph',
+            description: '',
+            // Deliberately all pre and shuffled: connections control execution, not layer metadata/order.
+            layers: agents.map((agent) => ({
+                id: crypto.randomUUID(),
+                name: agent.name,
+                phase: 'pre',
+                agents: [agent],
+            })),
+            graph: {
+                edges: pairs.map(([source, target]) => ({
+                    id: crypto.randomUUID(),
+                    source,
+                    target,
+                })),
+                positions: { [id(orphan.id)]: { x: -120, y: 500 }, [main]: { x: 0, y: 0 } },
+            },
+        })
+        const chain = context.store.modelChains.create(input)
+        expect(context.store.modelChains.get(chain.id)?.graph).toEqual(input.graph)
+        const conversation = context.store.conversations.createConversation({
+            characterId: GENERAL_CHAT_CHARACTER_ID,
+            modelPresetId: mainModel.id,
+            modelChainPresetId: chain.id,
+            greetingIndex: -1,
+        })
+        context.store.settings.updateSettings({ requestDebugEnabled: true })
+        try {
+            await runGeneration(context, conversation.id, 'graph request')
+            const records = context.store.generations
+                .listRequestDebugRecords()
+                .filter((record) => record.conversationId === conversation.id)
+            expect(records).toHaveLength(10)
+            const requestFor = (agent: ModelChainAgent) =>
+                JSON.stringify(
+                    records.find((record) => record.request.chain?.agentId === agent.id)?.request,
+                )
+            expect(requestFor(b)).toContain('OUTPUT_A')
+            expect(requestFor(b)).not.toContain('OUTPUT_C')
+            expect(requestFor(d)).toContain('OUTPUT_B')
+            expect(requestFor(d)).toContain('OUTPUT_C')
+            expect(requestFor(side)).toContain('OUTPUT_A')
+            expect(requestFor(postB)).toContain('MAIN\\n\\nOUTPUT_PostA')
+            expect(requestFor(postB)).not.toContain('OUTPUT_PostC')
+            const joinRequest = requestFor(postJoin)
+            expect(joinRequest).toContain('OUTPUT_PostB')
+            expect(joinRequest).toContain('OUTPUT_PostC')
+            expect(joinRequest.match(/OUTPUT_PostA/g)).toHaveLength(1)
+            expect(
+                records.some(
+                    (record) =>
+                        record.request.chain?.agentId === orphan.id ||
+                        record.request.chain?.agentId === detached.id,
+                ),
+            ).toBe(false)
+            expect(context.store.modelChains.getAgentMemory(conversation.id, orphan.id)).toBe('')
+            expect(
+                context.store.conversations.getLastAssistantMessage(conversation.id)?.content,
+            ).toBe('MAIN\n\nOUTPUT_PostA\n\nOUTPUT_PostB\n\nOUTPUT_PostC\n\nOUTPUT_PostJoin')
+
+            // Explicitly clearing every edge must survive storage and execute only main.
+            const updated = context.store.modelChains.update(chain.id, {
+                ...input,
+                graph: { ...input.graph!, edges: [] },
+            })!
+            expect(updated.layers).toEqual(chain.layers)
+            expect(updated.graph?.edges).toEqual([])
+            expect(updated.graph?.positions).toEqual(input.graph?.positions)
+            await runGeneration(context, conversation.id, 'disconnected request')
+            expect(
+                context.store.conversations.getLastAssistantMessage(conversation.id)?.content,
+            ).toBe('MAIN')
+            const after = context.store.generations
+                .listRequestDebugRecords()
+                .filter((record) => record.conversationId === conversation.id)
+            expect(after).toHaveLength(11)
+        } finally {
+            context.store.settings.updateSettings({ requestDebugEnabled: false })
+        }
     })
 
     test('persists tagged pre-agent memory per conversation', async () => {
