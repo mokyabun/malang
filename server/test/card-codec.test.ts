@@ -25,6 +25,7 @@ function buildRisumModule(module: Record<string, unknown>): Uint8Array {
 
 const config: AppConfig = {
     nodeEnv: 'test',
+    autoBackupEnabled: false,
     host: '127.0.0.1',
     dataDir: '/tmp/malang-test',
     databasePath: '/tmp/malang-test.sqlite',

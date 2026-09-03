@@ -13,6 +13,7 @@ describe('model presets, API keys, and conversation bindings', () => {
     const directory = mkdtempSync(join(tmpdir(), 'malang-model-presets-'))
     const config: AppConfig = {
         nodeEnv: 'test',
+        autoBackupEnabled: false,
         host: '127.0.0.1',
         dataDir: directory,
         databasePath: join(directory, 'data.sqlite'),

@@ -8,6 +8,7 @@ import { type AppEnv, jsonValidator } from '@/utils'
 export function createSettingsDomain(context: AppContext) {
     return new Hono<AppEnv>()
         .get('/', (c) => c.json(context.store.settings.getSettings()))
+        .get('/backup', (c) => c.json({ allowed: context.config.autoBackupEnabled }))
         .patch('/', jsonValidator(AppSettingsSchema.partial()), (c) => {
             const body = c.req.valid('json')
             if (body.defaultPromptPresetId && !context.prompts.get(body.defaultPromptPresetId)) {

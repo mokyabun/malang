@@ -22,6 +22,7 @@ import HypaMemoryV3MigrationPath from './migrations/0016_hypa_memory_v3.sql' wit
 import ModelChainsMigrationPath from './migrations/0017_model_chains.sql' with { type: 'file' }
 import ModelChainLayersMigrationPath from './migrations/0018_model_chain_layers.sql' with { type: 'file' }
 import ConversationPromptPersonaLocksMigrationPath from './migrations/0019_conversation_prompt_persona_locks.sql' with { type: 'file' }
+import AutoBackupMigrationPath from './migrations/0020_auto_backup.sql' with { type: 'file' }
 
 const migrations = [
     { version: 1, path: InitialMigrationPath },
@@ -44,6 +45,7 @@ const migrations = [
     { version: 18, path: ModelChainsMigrationPath },
     { version: 19, path: ModelChainLayersMigrationPath },
     { version: 20, path: ConversationPromptPersonaLocksMigrationPath },
+    { version: 21, path: AutoBackupMigrationPath },
 ]
 
 export function runMigrations(sqlite: Database): void {

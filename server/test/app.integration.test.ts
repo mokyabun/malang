@@ -15,6 +15,7 @@ describe('Hono API and SQLite persistence', () => {
     const directory = mkdtempSync(join(tmpdir(), 'malang-api-'))
     const config: AppConfig = {
         nodeEnv: 'test',
+        autoBackupEnabled: false,
         host: '127.0.0.1',
         dataDir: directory,
         databasePath: join(directory, 'data.sqlite'),
@@ -94,6 +95,27 @@ describe('Hono API and SQLite persistence', () => {
         expect(response.status).toBe(200)
         cookie = response.headers.get('set-cookie')!.split(';')[0]!
         expect(cookie).toStartWith('malang_session=')
+    })
+
+    test('persists backup settings and exposes the environment override behind authentication', async () => {
+        expect((await app.request('/api/v1/settings/backup')).status).toBe(401)
+        const status = await app.request('/api/v1/settings/backup', { headers: { cookie } })
+        expect(await status.json()).toEqual({ allowed: false })
+        for (const enabled of [false, true]) {
+            const response = await app.request('/api/v1/settings', {
+                method: 'PATCH',
+                headers: { cookie, 'content-type': 'application/json' },
+                body: JSON.stringify({ autoBackupEnabled: enabled }),
+            })
+            expect(response.status).toBe(200)
+            expect(await response.json()).toMatchObject({ autoBackupEnabled: enabled })
+        }
+        const invalid = await app.request('/api/v1/settings', {
+            method: 'PATCH',
+            headers: { cookie, 'content-type': 'application/json' },
+            body: JSON.stringify({ autoBackupEnabled: 'false' }),
+        })
+        expect(invalid.status).toBe(422)
     })
 
     test('returns stable structured errors with request IDs and validation issues', async () => {

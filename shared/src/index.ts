@@ -845,6 +845,7 @@ export const AppSettingsSchema = z.object({
     defaultAuxiliaryModelPresetId: IdSchema.nullable().default(null),
     selectedPersonaId: IdSchema.nullable(),
     requestDebugEnabled: z.boolean().default(false),
+    autoBackupEnabled: z.boolean().default(true),
     /**
      * RisuAI-compatible global switches: `jailbreak`/`cot`-type prompt blocks only render when
      * their matching switch is on (default off), independent of the block's own `enabled` flag.

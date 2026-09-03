@@ -10,6 +10,7 @@ describe('PocketRisu Lua runtime', () => {
     const directory = mkdtempSync(join(tmpdir(), 'malang-lua-'))
     const config: AppConfig = {
         nodeEnv: 'test',
+        autoBackupEnabled: false,
         host: '127.0.0.1',
         dataDir: directory,
         databasePath: join(directory, 'data.sqlite'),

@@ -41,6 +41,7 @@ export class SettingsRepository extends RepositoryBase {
             defaultAuxiliaryModelPresetId: row.defaultAuxiliaryModelPresetId,
             selectedPersonaId: row.selectedPersonaId,
             requestDebugEnabled: row.requestDebugEnabled,
+            autoBackupEnabled: row.autoBackupEnabled,
             jailbreakToggle: row.jailbreakToggle,
             chainOfThought: row.chainOfThought,
         }
@@ -61,6 +62,7 @@ export class SettingsRepository extends RepositoryBase {
                 defaultAuxiliaryModelPresetId: next.defaultAuxiliaryModelPresetId,
                 selectedPersonaId: next.selectedPersonaId,
                 requestDebugEnabled: next.requestDebugEnabled,
+                autoBackupEnabled: next.autoBackupEnabled,
                 jailbreakToggle: next.jailbreakToggle,
                 chainOfThought: next.chainOfThought,
                 updatedAt: Date.now(),

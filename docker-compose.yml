@@ -6,6 +6,7 @@ services:
             - '3000:3000'
         environment:
             DATA_DIR: /data
+            AUTO_BACKUP_ENABLED: ${AUTO_BACKUP_ENABLED:-true}
             DATABASE_URL: /data/data.sqlite
             ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
             SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}

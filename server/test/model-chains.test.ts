@@ -12,6 +12,7 @@ describe('server-side model chains', () => {
     const directory = mkdtempSync(join(tmpdir(), 'malang-model-chains-'))
     const config: AppConfig = {
         nodeEnv: 'test',
+        autoBackupEnabled: false,
         host: '127.0.0.1',
         dataDir: directory,
         databasePath: join(directory, 'data.sqlite'),

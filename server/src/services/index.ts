@@ -6,6 +6,7 @@ import { createLogger } from '@/logger'
 
 import { AssetStore } from './app/assets'
 import { AuthService } from './app/auth'
+import { BackupService } from './app/backups'
 import { CharacterService } from './app/characters'
 import { GenerationService } from './app/generations'
 import { PromptModuleService } from './app/modules'
@@ -50,6 +51,7 @@ export async function createContext(config: AppConfig = loadConfig()): Promise<A
     await auth.bootstrap(config.adminPassword)
     const assetStore = new AssetStore(config.dataDir, store)
     const logger = createLogger(config)
+    const backups = new BackupService(config, store, logger.child({ module: 'backups' }))
     const providers = new ProviderService(store, vault)
     const personas = new PersonaService(store, assetStore)
     const lua = new LuaRuntime(store, providers, personas, logger.child({ module: 'lua-runtime' }))
@@ -58,6 +60,7 @@ export async function createContext(config: AppConfig = loadConfig()): Promise<A
         providers,
         logger.child({ module: 'hypa-memory-v3' }),
     )
+    backups.start()
     return {
         config,
         store,
@@ -80,6 +83,7 @@ export async function createContext(config: AppConfig = loadConfig()): Promise<A
         ),
         logger,
         close: () => {
+            backups.close()
             lua.close()
             store.close()
         },

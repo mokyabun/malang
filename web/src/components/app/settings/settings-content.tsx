@@ -1,3 +1,4 @@
+import { BackupSection } from './backup/backup-section'
 import { RequestDebugSection } from './debug/request-debug-section'
 import { ModelChainSection } from './model-chains/model-chain-section'
 import { ModelPresetSection } from './model-presets/model-preset-section'
@@ -9,6 +10,13 @@ import type { SettingsPanelProps } from './types'
 
 export function SettingsContent({ section, ...props }: SettingsPanelProps) {
     switch (section) {
+        case 'backup':
+            return (
+                <BackupSection
+                    settings={props.settings}
+                    onSettingsChange={props.onSettingsChange}
+                />
+            )
         case 'theme':
             return <ThemeSection />
         case 'provider':

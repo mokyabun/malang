@@ -43,6 +43,7 @@ export const appSettings = sqliteTable('app_settings', {
     jailbreakToggle: integer('jailbreak_toggle', { mode: 'boolean' }).notNull().default(false),
     chainOfThought: integer('chain_of_thought', { mode: 'boolean' }).notNull().default(false),
     providerJson: text('provider_json'),
+    autoBackupEnabled: integer('auto_backup_enabled', { mode: 'boolean' }).notNull().default(true),
     secretSalt: text('secret_salt'),
     providerSecretJson: text('provider_secret_json'),
     updatedAt: integer('updated_at').notNull(),

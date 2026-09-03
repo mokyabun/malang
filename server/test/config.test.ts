@@ -9,6 +9,17 @@ function parseConfig(env: Record<string, string | undefined>) {
 }
 
 describe('runtime config', () => {
+    it('enables automatic backups by default and accepts explicit opt-outs', () => {
+        expect(parseConfig({ NODE_ENV: 'test' }).autoBackupEnabled).toBe(true)
+        for (const value of ['false', '0', 'off', 'no']) {
+            expect(
+                parseConfig({ NODE_ENV: 'test', AUTO_BACKUP_ENABLED: value }).autoBackupEnabled,
+            ).toBe(false)
+        }
+        expect(
+            EnvConfigSchema.safeParse({ NODE_ENV: 'test', AUTO_BACKUP_ENABLED: 'invalid' }).success,
+        ).toBe(false)
+    })
     it('uses environment-specific logging defaults', () => {
         expect(parseConfig({ NODE_ENV: 'development', SESSION_SECRET: 'secret' })).toMatchObject({
             logLevel: 'info',

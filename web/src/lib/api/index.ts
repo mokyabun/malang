@@ -301,6 +301,7 @@ export const api = {
         })
     },
     settings: () => request<AppSettings>('/settings'),
+    backupConfig: () => request<{ allowed: boolean }>('/settings/backup'),
     updateSettings: (input: Partial<AppSettings>) =>
         request<AppSettings>('/settings', { method: 'PATCH', body: JSON.stringify(input) }),
     requestDebugHistory: () => request<{ requests: RequestDebugRecord[] }>('/debug/requests'),

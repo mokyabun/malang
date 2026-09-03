@@ -69,6 +69,27 @@ Uploaded JSON credentials and API keys are never returned by the API: they are e
 at rest with AES-256-GCM using a key derived from the administrator password, and are
 re-encrypted when that password changes.
 
+## Automatic backups
+
+Automatic **database-only** snapshots are enabled by default. The server saves a snapshot
+at startup and checks for changes every five minutes, retaining up to 20 snapshots / 500 MB
+in `DATA_DIR/backups`. The newest snapshot is always retained even if it exceeds 500 MB.
+Unchanged databases are skipped. Backup failures are logged without stopping the server.
+
+Disable them in **Settings → 백업 → 자동 백업**, or set `AUTO_BACKUP_ENABLED=false`
+and restart the server. The environment opt-out takes precedence over the saved setting.
+Disabling backups does not delete existing snapshots. Docker Compose supports this variable too.
+
+Snapshots include chats, character records, settings, and encrypted credentials, but **not
+image/media files in `DATA_DIR/assets`**. Keep a separate copy of assets and an off-device
+backup for disaster recovery. Protect snapshots as sensitive data.
+
+To restore, stop the server, move the current database and its `-wal` / `-shm` sidecars
+to a safe location, then copy the chosen `.sqlite` snapshot to `DATABASE_URL`
+(default `DATA_DIR/data.sqlite`) and restart. Keep the assets at their original path;
+asset records contain absolute paths. Credentials require the administrator password
+that was active at the time of the snapshot. No in-app restore action is provided.
+
 ## Code quality
 
 All workspaces share [`.oxfmtrc.json`](./.oxfmtrc.json) and
