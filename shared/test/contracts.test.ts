@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+    AppSettingsSchema,
     GenerationRequestSchema,
     LongTermMemorySettingsPatchSchema,
     ModelChainPresetInputSchema,
@@ -8,6 +9,18 @@ import {
 } from '../src'
 
 describe('shared contracts', () => {
+    test('removes legacy settings from parsed API output', () => {
+        const settings = AppSettingsSchema.parse({
+            userName: 'Mina',
+            persona: 'legacy text',
+            globalVariables: {},
+            defaultPromptPresetId: null,
+            selectedPersonaId: null,
+        })
+
+        expect('persona' in settings).toBeFalse()
+    })
+
     test('long-term memory patches do not materialize unspecified defaults', () => {
         expect(LongTermMemorySettingsPatchSchema.parse({ enabled: true })).toEqual({
             enabled: true,

@@ -16,9 +16,9 @@ export interface DatabaseHandle {
 export function openDatabase(path: string): DatabaseHandle {
     mkdirSync(dirname(path), { recursive: true })
     const sqlite = new Database(path, { create: true, strict: true })
-    sqlite.exec('PRAGMA foreign_keys = ON;')
-    sqlite.exec('PRAGMA journal_mode = WAL;')
-    sqlite.exec('PRAGMA busy_timeout = 5000;')
+    sqlite.run('PRAGMA foreign_keys = ON;')
+    sqlite.run('PRAGMA journal_mode = WAL;')
+    sqlite.run('PRAGMA busy_timeout = 5000;')
     runMigrations(sqlite)
 
     return {

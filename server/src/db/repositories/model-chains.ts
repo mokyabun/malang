@@ -1,5 +1,6 @@
 import type {
     ModelChainAgent,
+    ModelChainGraph,
     ModelChainLayer,
     ModelChainPreset,
     ModelChainPresetInput,
@@ -46,7 +47,7 @@ export class ModelChainRepository extends RepositoryBase {
                 id,
                 name: input.name,
                 description: input.description,
-                stepsJson: serializeChainConfig(input),
+                configJson: serializeChainConfig(input),
                 sortOrder: (last?.value ?? -1) + 1,
                 createdAt: now,
                 updatedAt: now,
@@ -62,7 +63,7 @@ export class ModelChainRepository extends RepositoryBase {
             .set({
                 name: input.name,
                 description: input.description,
-                stepsJson: serializeChainConfig(input),
+                configJson: serializeChainConfig(input),
                 updatedAt: Date.now(),
             })
             .where(eq(modelChainPresets.id, id))
@@ -114,7 +115,7 @@ export class ModelChainRepository extends RepositoryBase {
 }
 
 function mapModelChainPreset(row: typeof modelChainPresets.$inferSelect): ModelChainPreset {
-    const config = parseChainConfig(row.stepsJson)
+    const config = parseChainConfig(row.configJson)
     return {
         id: row.id,
         name: row.name,
@@ -135,70 +136,12 @@ function serializeChainConfig(input: ModelChainPresetInput): string {
 }
 
 function parseChainConfig(raw: string): Pick<ModelChainPreset, 'layers' | 'graph'> {
-    const parsed = parseJson<unknown>(raw, [])
-    if (!Array.isArray(parsed) && Array.isArray((parsed as { layers?: unknown[] }).layers)) {
-        const config = parsed as Pick<ModelChainPreset, 'layers' | 'graph'>
-        return {
-            layers: config.layers.map((layer) => normalizeLayer(layer, Boolean(config.graph))),
-            ...(config.graph ? { graph: config.graph } : {}),
-        }
-    }
-
-    const config = Array.isArray(parsed)
-        ? {
-              steps: parsed,
-              preRequestMode: 'parallel' as const,
-              postRequestMode: 'sequential' as const,
-          }
-        : (parsed as {
-              steps?: LegacyStep[]
-              preRequestMode?: 'sequential' | 'parallel'
-              postRequestMode?: 'sequential' | 'parallel'
-          })
-    const steps = Array.isArray(config.steps) ? config.steps : []
+    const config = parseJson<{ layers?: ModelChainLayer[]; graph?: ModelChainGraph }>(raw, {})
+    const layers = Array.isArray(config.layers) ? config.layers : []
     return {
-        layers: [
-            ...legacyLayers(steps, 'pre', config.preRequestMode ?? 'parallel'),
-            ...legacyLayers(steps, 'post', config.postRequestMode ?? 'sequential'),
-        ],
+        layers: layers.map((layer) => normalizeLayer(layer, Boolean(config.graph))),
+        ...(config.graph ? { graph: config.graph } : {}),
     }
-}
-
-type LegacyStep = Partial<ModelChainAgent> & {
-    id: string
-    name: string
-    phase: 'pre' | 'post'
-    modelPresetId: string
-}
-
-function legacyLayers(
-    steps: LegacyStep[],
-    phase: ModelChainLayer['phase'],
-    mode: 'sequential' | 'parallel',
-): ModelChainLayer[] {
-    const agents = steps
-        .filter((step) => step.phase === phase)
-        .map((step) => ({
-            ...normalizeAgent(step),
-            memoryEnabled: phase === 'pre' && step.memoryEnabled === true,
-        }))
-    if (!agents.length) return []
-    if (mode === 'parallel') {
-        return [
-            {
-                id: agents[0]!.id,
-                name: '모델 흐름',
-                phase,
-                agents,
-            },
-        ]
-    }
-    return agents.map((agent, index) => ({
-        id: agent.id,
-        name: `모델 흐름 ${index + 1}`,
-        phase,
-        agents: [agent],
-    }))
 }
 
 function normalizeLayer(layer: ModelChainLayer, graph = false): ModelChainLayer {

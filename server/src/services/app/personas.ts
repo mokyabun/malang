@@ -67,7 +67,7 @@ export class PersonaService {
             return {
                 id: null,
                 name: settings.userName,
-                description: settings.persona,
+                description: '',
                 avatarAssetId: null,
                 source: 'conversation',
             }
@@ -87,9 +87,9 @@ export class PersonaService {
         return {
             id: null,
             name: settings.userName,
-            description: settings.persona,
+            description: '',
             avatarAssetId: null,
-            source: 'legacy',
+            source: 'default',
         }
     }
 }

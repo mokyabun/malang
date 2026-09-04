@@ -10,7 +10,7 @@ import { and, asc, desc, eq, isNull, max, sql } from 'drizzle-orm'
 
 import type { DatabaseHandle } from '../db'
 import { conversationGroups, conversationModules, conversations, messages } from '../schema'
-import { iso, normalizeToggleValues, parseJson, RepositoryBase, requireValue } from './base'
+import { iso, parseJson, RepositoryBase, requireValue } from './base'
 import { CharacterRepository } from './characters'
 import { PromptRepository } from './prompts'
 import { SettingsRepository } from './settings'
@@ -123,7 +123,6 @@ export class ConversationRepository extends RepositoryBase {
                 title: input.title || defaultTitle,
                 greetingIndex: input.greetingIndex,
                 variablesJson: '{}',
-                togglesJson: '{}',
                 authorNote: '',
                 boundPersonaId: null,
                 personaLocked: false,
@@ -280,7 +279,6 @@ export class ConversationRepository extends RepositoryBase {
                 | 'auxiliaryModelPresetId'
                 | 'modelChainPresetId'
                 | 'variables'
-                | 'toggles'
                 | 'authorNote'
                 | 'boundPersonaId'
                 | 'personaLocked'
@@ -308,7 +306,6 @@ export class ConversationRepository extends RepositoryBase {
                         ? current.modelChainPresetId
                         : update.modelChainPresetId,
                 variablesJson: JSON.stringify(update.variables ?? current.variables),
-                togglesJson: JSON.stringify(update.toggles ?? current.toggles),
                 authorNote: update.authorNote ?? current.authorNote,
                 boundPersonaId:
                     update.boundPersonaId === undefined
@@ -591,7 +588,6 @@ function mapConversation(row: typeof conversations.$inferSelect): Conversation {
         title: row.title,
         greetingIndex: row.greetingIndex,
         variables: parseJson(row.variablesJson, {}),
-        toggles: normalizeToggleValues(parseJson(row.togglesJson, {})),
         authorNote: row.authorNote,
         boundPersonaId: row.boundPersonaId,
         personaLocked: row.personaLocked,

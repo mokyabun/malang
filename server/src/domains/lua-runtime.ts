@@ -23,7 +23,7 @@ export function createConversationLuaDomain(context: AppContext) {
 export function createRuntimeDomain(context: AppContext) {
     return new Hono<AppEnv>()
         .get('/events', (c) => {
-            const clientInstanceId = z.string().uuid().parse(c.req.query('clientInstanceId'))
+            const clientInstanceId = z.uuid().parse(c.req.query('clientInstanceId'))
             return new Response(context.lua.remote.subscribe(clientInstanceId), {
                 headers: {
                     'content-type': 'text/event-stream; charset=utf-8',

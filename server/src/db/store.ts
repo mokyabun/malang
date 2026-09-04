@@ -38,7 +38,7 @@ export class Store {
     constructor(private readonly handle: DatabaseHandle) {
         this.auth = new AuthRepository(handle)
         this.settings = new SettingsRepository(handle)
-        this.personas = new PersonaRepository(handle, this.settings)
+        this.personas = new PersonaRepository(handle)
         this.providers = new ProviderRepository(handle, this.settings)
         this.prompts = new PromptRepository(handle, this.settings)
         this.assets = new AssetRepository(handle)

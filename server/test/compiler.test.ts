@@ -129,7 +129,6 @@ describe('server-side Risu CBS compilation', () => {
             },
             settings: {
                 userName: 'Mina',
-                persona: '',
                 globalVariables: {},
             },
             parameters: { maxContextTokens: 8192, maxOutputTokens: 512 },
@@ -207,7 +206,6 @@ describe('PocketRisu module custom toggles', () => {
             ],
             settings: {
                 userName: 'Mina',
-                persona: '',
                 globalVariables: {},
                 promptToggleValues: {
                     'gigatrans.auto': auto,
@@ -277,7 +275,7 @@ describe('RisuAI-compatible jailbreak / chain-of-thought toggles', () => {
                 ],
                 promptSettings: { sendChatAsSystem: false, sendName: false, assistantPrefill: '' },
             },
-            settings: { userName: 'Mina', persona: '', globalVariables: {} },
+            settings: { userName: 'Mina', globalVariables: {} },
             parameters: { maxContextTokens: 8192, maxOutputTokens: 512 },
         } as unknown as Parameters<typeof compilePrompt>[0]
     }
@@ -340,7 +338,7 @@ describe('RisuAI-compatible sendName / sendChatAsSystem formatting', () => {
                 ],
                 promptSettings: { sendChatAsSystem: false, sendName: true, assistantPrefill: '' },
             },
-            settings: { userName: 'Mina', persona: '', globalVariables: {} },
+            settings: { userName: 'Mina', globalVariables: {} },
             parameters: { maxContextTokens: 8192, maxOutputTokens: 512 },
         } as unknown as Parameters<typeof compilePrompt>[0]
     }

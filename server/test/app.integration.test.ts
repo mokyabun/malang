@@ -1234,7 +1234,7 @@ describe('Hono API and SQLite persistence', () => {
         const personaA = await createPersona('Aria', 'Aria is an archivist.')
         const personaB = await createPersona('Bram', 'Bram is a blacksmith.')
 
-        // Validation still protects both the global setting and legacy stored bindings.
+        // Validation protects both the global setting and stored conversation bindings.
         const invalidSettings = await app.request('/api/v1/settings', {
             method: 'PATCH',
             headers: jsonHeaders,
@@ -1337,9 +1337,9 @@ describe('Hono API and SQLite persistence', () => {
             },
         ).toMatchObject({ boundPersonaId: null, personaLocked: false })
         const previewAfterDelete = await preview()
-        expect(previewAfterDelete.persona).toMatchObject({ id: null, source: 'legacy' })
+        expect(previewAfterDelete.persona).toMatchObject({ id: null, source: 'default' })
 
-        // Clearing the global selection falls back to the legacy user profile.
+        // Clearing the global selection uses the empty default identity.
         await app.request(`/api/v1/personas/${personaA.id}`, {
             method: 'DELETE',
             headers: { cookie },
@@ -1347,16 +1347,14 @@ describe('Hono API and SQLite persistence', () => {
         const clearSelection = await app.request('/api/v1/settings', {
             method: 'PATCH',
             headers: jsonHeaders,
-            body: JSON.stringify({ selectedPersonaId: null, persona: 'Legacy persona text.' }),
+            body: JSON.stringify({ selectedPersonaId: null }),
         })
         expect(clearSelection.status).toBe(200)
-        const previewLegacy = await preview()
-        expect(previewLegacy.persona).toMatchObject({ id: null, source: 'legacy' })
+        const previewDefault = await preview()
+        expect(previewDefault.persona).toMatchObject({ id: null, source: 'default' })
         expect(
-            previewLegacy.messages.some((message) =>
-                message.content.includes('Legacy persona text.'),
-            ),
-        ).toBeTrue()
+            previewDefault.messages.some((message) => message.content.includes('archivist')),
+        ).toBeFalse()
     })
 
     test('avatar upload/removal and CRUD round-trip for personas', async () => {

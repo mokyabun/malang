@@ -1,132 +1,459 @@
-CREATE TABLE admin_users (
-    id TEXT PRIMARY KEY,
-    password_hash TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+CREATE TABLE `admin_users` (
+	`id` text PRIMARY KEY NOT NULL,
+	`password_hash` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL
 );
-CREATE TABLE sessions (
-    id TEXT PRIMARY KEY,
-    admin_id TEXT NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
-    token_hash TEXT NOT NULL UNIQUE,
-    expires_at INTEGER NOT NULL,
-    created_at INTEGER NOT NULL
+--> statement-breakpoint
+CREATE TABLE `app_settings` (
+	`id` integer PRIMARY KEY NOT NULL CHECK (`id` = 1),
+	`user_name` text NOT NULL,
+	`global_variables_json` text NOT NULL,
+	`prompt_toggle_values_json` text DEFAULT '{}' NOT NULL,
+	`default_prompt_preset_id` text,
+	`default_model_preset_id` text,
+	`default_auxiliary_model_preset_id` text,
+	`selected_persona_id` text,
+	`request_debug_enabled` integer DEFAULT false NOT NULL,
+	`jailbreak_toggle` integer DEFAULT false NOT NULL,
+	`chain_of_thought` integer DEFAULT false NOT NULL,
+	`provider_json` text,
+	`auto_backup_enabled` integer DEFAULT true NOT NULL,
+	`secret_salt` text,
+	`provider_secret_json` text,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`selected_persona_id`) REFERENCES `personas`(`id`) ON UPDATE no action ON DELETE set null
 );
-CREATE TABLE app_settings (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    user_name TEXT NOT NULL,
-    persona TEXT NOT NULL,
-    global_variables_json TEXT NOT NULL,
-    default_prompt_preset_id TEXT,
-    provider_json TEXT,
-    updated_at INTEGER NOT NULL
+--> statement-breakpoint
+CREATE TABLE `assets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`sha256` text NOT NULL,
+	`mime_type` text NOT NULL,
+	`size` integer NOT NULL,
+	`path` text NOT NULL,
+	`created_at` integer NOT NULL
 );
-CREATE TABLE assets (
-    id TEXT PRIMARY KEY,
-    sha256 TEXT NOT NULL UNIQUE,
-    mime_type TEXT NOT NULL,
-    size INTEGER NOT NULL,
-    path TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+--> statement-breakpoint
+CREATE UNIQUE INDEX `assets_sha256_idx` ON `assets` (`sha256`);--> statement-breakpoint
+CREATE TABLE `character_assets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`character_id` text NOT NULL,
+	`asset_id` text NOT NULL,
+	`type` text NOT NULL,
+	`name` text NOT NULL,
+	`extension` text NOT NULL,
+	`source_uri` text NOT NULL,
+	FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`asset_id`) REFERENCES `assets`(`id`) ON UPDATE no action ON DELETE restrict
 );
-CREATE TABLE characters (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL,
-    personality TEXT NOT NULL,
-    scenario TEXT NOT NULL,
-    first_message TEXT NOT NULL,
-    alternate_greetings_json TEXT NOT NULL,
-    example_message TEXT NOT NULL,
-    system_prompt TEXT NOT NULL,
-    post_history_instructions TEXT NOT NULL,
-    creator TEXT NOT NULL,
-    character_version TEXT NOT NULL,
-    tags_json TEXT NOT NULL,
-    avatar_asset_id TEXT REFERENCES assets(id) ON DELETE SET NULL,
-    source_spec TEXT NOT NULL CHECK (source_spec IN ('v2', 'v3')),
-    source_extensions_json TEXT NOT NULL,
-    source_card_json TEXT NOT NULL,
-    lore_settings_json TEXT NOT NULL,
-    archived_at INTEGER,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+--> statement-breakpoint
+CREATE TABLE `character_groups` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`sort_order` integer NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL
 );
-CREATE TABLE character_lore_entries (
-    id TEXT PRIMARY KEY,
-    character_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
-    keys_json TEXT NOT NULL,
-    secondary_keys_json TEXT NOT NULL,
-    content TEXT NOT NULL,
-    enabled INTEGER NOT NULL,
-    constant INTEGER NOT NULL,
-    selective INTEGER NOT NULL,
-    case_sensitive INTEGER NOT NULL,
-    use_regex INTEGER NOT NULL,
-    insertion_order INTEGER NOT NULL,
-    priority INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    extensions_json TEXT NOT NULL
+--> statement-breakpoint
+CREATE TABLE `character_lore_entries` (
+	`id` text PRIMARY KEY NOT NULL,
+	`character_id` text NOT NULL,
+	`keys_json` text NOT NULL,
+	`secondary_keys_json` text NOT NULL,
+	`content` text NOT NULL,
+	`enabled` integer NOT NULL,
+	`constant` integer NOT NULL,
+	`selective` integer NOT NULL,
+	`case_sensitive` integer NOT NULL,
+	`use_regex` integer NOT NULL,
+	`insertion_order` integer NOT NULL,
+	`priority` integer NOT NULL,
+	`name` text NOT NULL,
+	`extensions_json` text NOT NULL,
+	FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON UPDATE no action ON DELETE cascade
 );
-CREATE INDEX character_lore_character_idx ON character_lore_entries(character_id);
-CREATE TABLE character_assets (
-    id TEXT PRIMARY KEY,
-    character_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
-    asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,
-    type TEXT NOT NULL,
-    name TEXT NOT NULL,
-    extension TEXT NOT NULL,
-    source_uri TEXT NOT NULL
+--> statement-breakpoint
+CREATE TABLE `characters` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`description` text NOT NULL,
+	`personality` text NOT NULL,
+	`scenario` text NOT NULL,
+	`first_message` text NOT NULL,
+	`alternate_greetings_json` text NOT NULL,
+	`example_message` text NOT NULL,
+	`system_prompt` text NOT NULL,
+	`post_history_instructions` text NOT NULL,
+	`creator` text NOT NULL,
+	`character_version` text NOT NULL,
+	`tags_json` text NOT NULL,
+	`avatar_asset_id` text,
+	`source_spec` text NOT NULL CHECK (`source_spec` IN ('v2', 'v3')),
+	`source_extensions_json` text NOT NULL,
+	`source_card_json` text NOT NULL,
+	`lore_settings_json` text NOT NULL,
+	`regex_scripts_json` text DEFAULT '[]' NOT NULL,
+	`module_references_json` text DEFAULT '[]' NOT NULL,
+	`default_variables_json` text DEFAULT '{}' NOT NULL,
+	`lua_code` text,
+	`lua_enabled` integer DEFAULT false NOT NULL,
+	`lua_low_level_access` integer DEFAULT false NOT NULL,
+	`lua_revision` integer DEFAULT 0 NOT NULL,
+	`lua_code_sha256` text DEFAULT '' NOT NULL,
+	`lua_raw_trigger_json` text DEFAULT '[]' NOT NULL,
+	`group_id` text,
+	`sort_order` integer DEFAULT 0 NOT NULL,
+	`archived_at` integer,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`avatar_asset_id`) REFERENCES `assets`(`id`) ON UPDATE no action ON DELETE set null,
+	FOREIGN KEY (`group_id`) REFERENCES `character_groups`(`id`) ON UPDATE no action ON DELETE set null
 );
-CREATE INDEX character_assets_character_idx ON character_assets(character_id);
-CREATE TABLE prompt_presets (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    blocks_json TEXT NOT NULL,
-    parameters_json TEXT NOT NULL,
-    default_variables_json TEXT NOT NULL,
-    warnings_json TEXT NOT NULL,
-    source_json TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+--> statement-breakpoint
+CREATE TABLE `conversation_groups` (
+	`id` text PRIMARY KEY NOT NULL,
+	`character_id` text NOT NULL,
+	`name` text NOT NULL,
+	`sort_order` integer NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON UPDATE no action ON DELETE cascade
 );
-CREATE TABLE conversations (
-    id TEXT PRIMARY KEY,
-    character_id TEXT NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
-    prompt_preset_id TEXT NOT NULL REFERENCES prompt_presets(id) ON DELETE RESTRICT,
-    title TEXT NOT NULL,
-    greeting_index INTEGER NOT NULL,
-    variables_json TEXT NOT NULL,
-    toggles_json TEXT NOT NULL,
-    archived_at INTEGER,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+--> statement-breakpoint
+CREATE TABLE `conversation_lore_entries` (
+	`id` text PRIMARY KEY NOT NULL,
+	`conversation_id` text NOT NULL,
+	`name` text NOT NULL,
+	`entry_json` text NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
-CREATE TABLE messages (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-    content TEXT NOT NULL,
-    position INTEGER NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('complete', 'streaming', 'cancelled', 'failed')),
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    UNIQUE(conversation_id, position)
+--> statement-breakpoint
+CREATE UNIQUE INDEX `conversation_lore_entries_name_idx` ON `conversation_lore_entries` (`conversation_id`,`name`);--> statement-breakpoint
+CREATE TABLE `conversation_memory_settings` (
+	`conversation_id` text PRIMARY KEY NOT NULL,
+	`settings_json` text NOT NULL,
+	`metrics_json` text DEFAULT '{}' NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
-CREATE TABLE generation_runs (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
-    idempotency_key TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('running', 'complete', 'cancelled', 'failed')),
-    provider TEXT NOT NULL,
-    model_id TEXT NOT NULL,
-    parameters_json TEXT NOT NULL,
-    output_text TEXT NOT NULL,
-    input_tokens INTEGER,
-    output_tokens INTEGER,
-    error_code TEXT,
-    error_message TEXT,
-    started_at INTEGER NOT NULL,
-    completed_at INTEGER,
-    UNIQUE(conversation_id, idempotency_key)
+--> statement-breakpoint
+CREATE TABLE `conversation_memory_summaries` (
+	`id` text PRIMARY KEY NOT NULL,
+	`conversation_id` text NOT NULL,
+	`text` text NOT NULL,
+	`source_message_ids_json` text NOT NULL,
+	`vector_json` text NOT NULL,
+	`is_important` integer DEFAULT false NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
+--> statement-breakpoint
+CREATE INDEX `conversation_memory_summaries_conversation_idx` ON `conversation_memory_summaries` (`conversation_id`,`created_at`);--> statement-breakpoint
+CREATE TABLE `conversation_modules` (
+	`conversation_id` text NOT NULL,
+	`module_id` text NOT NULL,
+	`enabled` integer NOT NULL,
+	PRIMARY KEY(`conversation_id`, `module_id`),
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`module_id`) REFERENCES `prompt_modules`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `conversations` (
+	`id` text PRIMARY KEY NOT NULL,
+	`character_id` text NOT NULL,
+	`prompt_preset_id` text NOT NULL,
+	`prompt_preset_locked` integer DEFAULT false NOT NULL,
+	`model_preset_id` text,
+	`auxiliary_model_preset_id` text,
+	`model_chain_preset_id` text,
+	`title` text NOT NULL,
+	`greeting_index` integer NOT NULL,
+	`variables_json` text NOT NULL,
+	`author_note` text DEFAULT '' NOT NULL,
+	`bound_persona_id` text,
+	`persona_locked` integer DEFAULT false NOT NULL,
+	`group_id` text,
+	`sort_order` integer DEFAULT 0 NOT NULL,
+	`archived_at` integer,
+	`display_epoch` integer DEFAULT 0 NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`prompt_preset_id`) REFERENCES `prompt_presets`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`model_chain_preset_id`) REFERENCES `model_chain_presets`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`bound_persona_id`) REFERENCES `personas`(`id`) ON UPDATE no action ON DELETE set null,
+	FOREIGN KEY (`group_id`) REFERENCES `conversation_groups`(`id`) ON UPDATE no action ON DELETE set null
+);
+--> statement-breakpoint
+CREATE TABLE `generation_runs` (
+	`id` text PRIMARY KEY NOT NULL,
+	`conversation_id` text NOT NULL,
+	`message_id` text,
+	`idempotency_key` text NOT NULL,
+	`status` text NOT NULL CHECK (`status` IN ('running', 'complete', 'cancelled', 'failed')),
+	`provider` text NOT NULL,
+	`model_id` text NOT NULL,
+	`parameters_json` text NOT NULL,
+	`output_text` text NOT NULL,
+	`processed_output_text` text DEFAULT '' NOT NULL,
+	`input_tokens` integer,
+	`output_tokens` integer,
+	`error_code` text,
+	`error_message` text,
+	`started_at` integer NOT NULL,
+	`completed_at` integer,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`message_id`) REFERENCES `messages`(`id`) ON UPDATE no action ON DELETE set null
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `generation_idempotency_idx` ON `generation_runs` (`conversation_id`,`idempotency_key`);--> statement-breakpoint
+CREATE TABLE `lua_api_calls` (
+	`id` text PRIMARY KEY NOT NULL,
+	`invocation_id` text NOT NULL,
+	`call_index` integer NOT NULL,
+	`operation` text NOT NULL,
+	`status` text NOT NULL CHECK (`status` IN ('running', 'complete', 'failed', 'indeterminate')),
+	`request_json` text DEFAULT '{}' NOT NULL,
+	`result_json` text,
+	`error_json` text,
+	`created_at` integer NOT NULL,
+	`completed_at` integer,
+	FOREIGN KEY (`invocation_id`) REFERENCES `lua_invocations`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `lua_api_calls_unique_idx` ON `lua_api_calls` (`invocation_id`,`call_index`);--> statement-breakpoint
+CREATE TABLE `lua_display_batches` (
+	`conversation_id` text NOT NULL,
+	`display_epoch` integer NOT NULL,
+	`script_set_hash` text NOT NULL,
+	`status` text NOT NULL CHECK (`status` IN ('running', 'complete', 'failed')),
+	`result_json` text,
+	`error_json` text,
+	`created_at` integer NOT NULL,
+	`completed_at` integer,
+	PRIMARY KEY(`conversation_id`, `display_epoch`, `script_set_hash`),
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `lua_event_runs` (
+	`id` text PRIMARY KEY NOT NULL,
+	`conversation_id` text NOT NULL,
+	`event_key` text NOT NULL,
+	`phase` text NOT NULL,
+	`client_instance_id` text,
+	`status` text NOT NULL CHECK (`status` IN ('running', 'complete', 'failed')),
+	`input_json` text DEFAULT '{}' NOT NULL,
+	`result_json` text,
+	`error_json` text,
+	`created_at` integer NOT NULL,
+	`completed_at` integer,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `lua_event_runs_unique_idx` ON `lua_event_runs` (`conversation_id`,`event_key`,`phase`);--> statement-breakpoint
+CREATE TABLE `lua_invocations` (
+	`id` text PRIMARY KEY NOT NULL,
+	`event_run_id` text NOT NULL,
+	`owner_type` text NOT NULL CHECK (`owner_type` IN ('character', 'module')),
+	`owner_id` text NOT NULL,
+	`script_revision` integer NOT NULL,
+	`sequence` integer NOT NULL,
+	`status` text NOT NULL CHECK (`status` IN ('running', 'complete', 'failed')),
+	`result_json` text,
+	`warnings_json` text DEFAULT '[]' NOT NULL,
+	`error_json` text,
+	`created_at` integer NOT NULL,
+	`completed_at` integer,
+	FOREIGN KEY (`event_run_id`) REFERENCES `lua_event_runs`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `lua_invocations_unique_idx` ON `lua_invocations` (`event_run_id`,`owner_type`,`owner_id`,`script_revision`);--> statement-breakpoint
+CREATE TABLE `lua_remote_commands` (
+	`id` text PRIMARY KEY NOT NULL,
+	`invocation_id` text NOT NULL,
+	`call_index` integer NOT NULL,
+	`client_instance_id` text NOT NULL,
+	`kind` text NOT NULL,
+	`payload_json` text NOT NULL,
+	`result_json` text,
+	`status` text NOT NULL CHECK (`status` IN ('pending', 'complete', 'failed', 'expired')),
+	`blocking` integer DEFAULT false NOT NULL,
+	`expires_at` integer NOT NULL,
+	`created_at` integer NOT NULL,
+	`completed_at` integer,
+	FOREIGN KEY (`invocation_id`) REFERENCES `lua_invocations`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `lua_remote_commands_unique_idx` ON `lua_remote_commands` (`invocation_id`,`call_index`);--> statement-breakpoint
+CREATE TABLE `lua_states` (
+	`conversation_id` text NOT NULL,
+	`owner_type` text NOT NULL CHECK (`owner_type` IN ('character', 'module')),
+	`owner_id` text NOT NULL,
+	`state_key` text NOT NULL,
+	`value_json` text NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
+	`updated_at` integer NOT NULL,
+	PRIMARY KEY(`conversation_id`, `owner_type`, `owner_id`, `state_key`),
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `messages` (
+	`id` text PRIMARY KEY NOT NULL,
+	`conversation_id` text NOT NULL,
+	`role` text NOT NULL CHECK (`role` IN ('user', 'assistant', 'system')),
+	`content` text NOT NULL,
+	`position` integer NOT NULL,
+	`status` text NOT NULL CHECK (`status` IN ('complete', 'streaming', 'cancelled', 'failed')),
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `messages_conversation_position_idx` ON `messages` (`conversation_id`,`position`);--> statement-breakpoint
+CREATE TABLE `model_api_keys` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`provider` text NOT NULL,
+	`credential_type` text NOT NULL CHECK (`credential_type` IN ('apiKey', 'serviceAccount', 'aws')),
+	`hint` text DEFAULT '' NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `model_chain_agent_memories` (
+	`conversation_id` text NOT NULL,
+	`agent_id` text NOT NULL,
+	`content` text DEFAULT '' NOT NULL,
+	`updated_at` integer NOT NULL,
+	PRIMARY KEY(`conversation_id`, `agent_id`),
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `model_chain_presets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`description` text DEFAULT '' NOT NULL,
+	`config_json` text NOT NULL,
+	`sort_order` integer DEFAULT 0 NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `model_presets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`provider_json` text NOT NULL,
+	`api_key_id` text,
+	`sort_order` integer DEFAULT 0 NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`api_key_id`) REFERENCES `model_api_keys`(`id`) ON UPDATE no action ON DELETE restrict
+);
+--> statement-breakpoint
+CREATE TABLE `personas` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`description` text NOT NULL,
+	`note` text DEFAULT '' NOT NULL,
+	`avatar_asset_id` text,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`avatar_asset_id`) REFERENCES `assets`(`id`) ON UPDATE no action ON DELETE set null
+);
+--> statement-breakpoint
+CREATE TABLE `prompt_module_assets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`module_id` text NOT NULL,
+	`asset_id` text NOT NULL,
+	`type` text NOT NULL,
+	`name` text NOT NULL,
+	`extension` text NOT NULL,
+	`source_uri` text NOT NULL,
+	FOREIGN KEY (`module_id`) REFERENCES `prompt_modules`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`asset_id`) REFERENCES `assets`(`id`) ON UPDATE no action ON DELETE restrict
+);
+--> statement-breakpoint
+CREATE TABLE `prompt_modules` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`description` text NOT NULL,
+	`namespace` text NOT NULL,
+	`source_id` text DEFAULT '' NOT NULL,
+	`runtime_order` integer DEFAULT 0 NOT NULL,
+	`lua_code` text,
+	`lua_enabled` integer DEFAULT false NOT NULL,
+	`lua_low_level_access` integer DEFAULT false NOT NULL,
+	`lua_revision` integer DEFAULT 0 NOT NULL,
+	`lua_code_sha256` text DEFAULT '' NOT NULL,
+	`lua_raw_trigger_json` text DEFAULT '[]' NOT NULL,
+	`enabled_by_default` integer DEFAULT false NOT NULL,
+	`prompts_json` text NOT NULL,
+	`toggles_json` text NOT NULL,
+	`regex_scripts_json` text DEFAULT '[]' NOT NULL,
+	`background_embedding` text DEFAULT '' NOT NULL,
+	`lorebook_json` text DEFAULT '[]' NOT NULL,
+	`warnings_json` text NOT NULL,
+	`source_json` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `prompt_presets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`blocks_json` text NOT NULL,
+	`parameters_json` text NOT NULL,
+	`default_variables_json` text NOT NULL,
+	`toggles_json` text DEFAULT '[]' NOT NULL,
+	`regex_scripts_json` text DEFAULT '[]' NOT NULL,
+	`module_integrations_json` text DEFAULT '[]' NOT NULL,
+	`prompt_settings_json` text DEFAULT '{}' NOT NULL,
+	`warnings_json` text NOT NULL,
+	`source_json` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `request_debug_records` (
+	`id` text PRIMARY KEY NOT NULL,
+	`generation_id` text NOT NULL,
+	`conversation_id` text NOT NULL,
+	`provider` text NOT NULL,
+	`model_id` text NOT NULL,
+	`parameters_json` text NOT NULL,
+	`request_json` text NOT NULL,
+	`created_at` integer NOT NULL,
+	FOREIGN KEY (`generation_id`) REFERENCES `generation_runs`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `sessions` (
+	`id` text PRIMARY KEY NOT NULL,
+	`admin_id` text NOT NULL,
+	`token_hash` text NOT NULL,
+	`expires_at` integer NOT NULL,
+	`created_at` integer NOT NULL,
+	FOREIGN KEY (`admin_id`) REFERENCES `admin_users`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `sessions_token_hash_idx` ON `sessions` (`token_hash`);
+--> statement-breakpoint
+CREATE INDEX `character_assets_character_idx` ON `character_assets` (`character_id`);
+--> statement-breakpoint
+CREATE INDEX `character_lore_character_idx` ON `character_lore_entries` (`character_id`);
+--> statement-breakpoint
+CREATE INDEX `characters_group_order_idx` ON `characters` (`group_id`, `sort_order`);
+--> statement-breakpoint
+CREATE INDEX `conversation_groups_character_order_idx` ON `conversation_groups` (`character_id`, `sort_order`);
+--> statement-breakpoint
+CREATE INDEX `conversations_group_order_idx` ON `conversations` (`character_id`, `group_id`, `sort_order`);
+--> statement-breakpoint
+CREATE INDEX `lua_remote_commands_client_idx` ON `lua_remote_commands` (`client_instance_id`, `status`, `created_at`);
+--> statement-breakpoint
+CREATE INDEX `prompt_module_assets_module_idx` ON `prompt_module_assets` (`module_id`);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `prompt_modules_namespace_idx` ON `prompt_modules` (`namespace`) WHERE `namespace` <> '';
+--> statement-breakpoint
+CREATE INDEX `request_debug_records_created_at_idx` ON `request_debug_records` (`created_at` DESC);

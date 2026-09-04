@@ -1,32 +1,10 @@
 import type { Persona, PersonaCreate, PersonaUpdate } from '@malang/shared'
 import { asc, eq } from 'drizzle-orm'
 
-import type { DatabaseHandle } from '../db'
 import { conversations, personas } from '../schema'
 import { iso, RepositoryBase } from './base'
-import { SettingsRepository } from './settings'
 
 export class PersonaRepository extends RepositoryBase {
-    constructor(
-        handle: DatabaseHandle,
-        private readonly settings: SettingsRepository,
-    ) {
-        super(handle)
-    }
-
-    ensurePersonaBootstrap(): void {
-        const existing = this.db.select({ id: personas.id }).from(personas).limit(1).get()
-        if (existing) return
-        const settings = this.settings.getSettings()
-        if (!settings.persona.trim()) return
-        const persona = this.createPersona({
-            name: settings.userName,
-            description: settings.persona,
-            note: '',
-        })
-        this.settings.updateSettings({ selectedPersonaId: persona.id })
-    }
-
     listPersonas(): Persona[] {
         return this.db
             .select()

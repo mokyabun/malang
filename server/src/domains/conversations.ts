@@ -20,7 +20,6 @@ const ConversationPatchBody = z.object({
     auxiliaryModelPresetId: z.uuid().nullable().optional(),
     modelChainPresetId: z.uuid().nullable().optional(),
     variables: z.record(z.string(), z.string()).optional(),
-    toggles: z.record(z.string(), z.string()).optional(),
     authorNote: z.string().max(1_000_000).optional(),
     boundPersonaId: z.uuid().nullable().optional(),
     personaLocked: z.boolean().optional(),

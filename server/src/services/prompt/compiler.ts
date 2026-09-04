@@ -85,9 +85,9 @@ export function compilePrompt(input: {
     const persona: EffectivePersona = input.persona || {
         id: null,
         name: settings.userName,
-        description: settings.persona,
+        description: '',
         avatarAssetId: null,
-        source: 'legacy',
+        source: 'default',
     }
     const modules = input.modules || []
     const warnings = [

@@ -112,7 +112,7 @@ describe('HypaMemory V3 prompt integration', () => {
                     assistantPrefill: '',
                 },
             },
-            settings: { userName: 'Mina', persona: '', globalVariables: {} },
+            settings: { userName: 'Mina', globalVariables: {} },
             parameters: { maxContextTokens: 8192, maxOutputTokens: 512 },
             longTermMemory: {
                 enabled: true,

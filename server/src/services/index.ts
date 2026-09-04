@@ -45,7 +45,6 @@ export async function createContext(config: AppConfig = loadConfig()): Promise<A
     store.settings.ensureSettings()
     store.prompts.ensureDefaultPrompt()
     store.characters.ensureGeneralChatCharacter()
-    store.personas.ensurePersonaBootstrap()
     const vault = new SecretVault(store)
     const auth = new AuthService(store, config.sessionSecret, vault)
     await auth.bootstrap(config.adminPassword)

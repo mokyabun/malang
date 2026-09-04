@@ -36,7 +36,7 @@ const ServiceAccountSchema = z
         client_x509_cert_url: z.string().optional(),
         universe_domain: z.string().optional(),
     })
-    .passthrough()
+    .loose()
 
 const ProviderSecretSchema = z.discriminatedUnion('type', [
     z.object({

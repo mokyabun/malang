@@ -28,7 +28,6 @@ export const sessions = sqliteTable(
 export const appSettings = sqliteTable('app_settings', {
     id: integer('id').primaryKey(),
     userName: text('user_name').notNull(),
-    persona: text('persona').notNull(),
     globalVariablesJson: text('global_variables_json').notNull(),
     promptToggleValuesJson: text('prompt_toggle_values_json').notNull().default('{}'),
     defaultPromptPresetId: text('default_prompt_preset_id'),
@@ -73,7 +72,7 @@ export const modelChainPresets = sqliteTable('model_chain_presets', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     description: text('description').notNull().default(''),
-    stepsJson: text('steps_json').notNull(),
+    configJson: text('config_json').notNull(),
     sortOrder: integer('sort_order').notNull().default(0),
     ...timestampColumns,
 })
@@ -266,7 +265,6 @@ export const conversations = sqliteTable('conversations', {
     title: text('title').notNull(),
     greetingIndex: integer('greeting_index').notNull(),
     variablesJson: text('variables_json').notNull(),
-    togglesJson: text('toggles_json').notNull(),
     authorNote: text('author_note').notNull().default(''),
     boundPersonaId: text('bound_persona_id').references(() => personas.id, {
         onDelete: 'set null',

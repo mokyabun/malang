@@ -12,7 +12,6 @@ export class SettingsRepository extends RepositoryBase {
             .values({
                 id: 1,
                 userName: 'User',
-                persona: '',
                 globalVariablesJson: '{}',
                 promptToggleValuesJson: '{}',
                 defaultPromptPresetId: null,
@@ -33,7 +32,6 @@ export class SettingsRepository extends RepositoryBase {
         )
         return {
             userName: row.userName,
-            persona: row.persona,
             globalVariables: parseJson(row.globalVariablesJson, {}),
             promptToggleValues: normalizeToggleValues(parseJson(row.promptToggleValuesJson, {})),
             defaultPromptPresetId: row.defaultPromptPresetId,
@@ -54,7 +52,6 @@ export class SettingsRepository extends RepositoryBase {
             .update(appSettings)
             .set({
                 userName: next.userName,
-                persona: next.persona,
                 globalVariablesJson: JSON.stringify(next.globalVariables),
                 promptToggleValuesJson: JSON.stringify(next.promptToggleValues),
                 defaultPromptPresetId: next.defaultPromptPresetId,

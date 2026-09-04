@@ -3,7 +3,7 @@ import type {
     ModelChainGraph,
     ModelChainLayer,
     ModelChainPresetInput,
-} from './index'
+} from './types'
 
 export const CHAIN_MAIN_NODE_ID = 'main-response'
 export const chainAgentNodeId = (id: string) => `agent:${id}`

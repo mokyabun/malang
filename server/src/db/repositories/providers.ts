@@ -112,23 +112,14 @@ export class ProviderRepository extends RepositoryBase {
         )
             return 'in_use'
         const usedByChain = this.db
-            .select({ stepsJson: modelChainPresets.stepsJson })
+            .select({ configJson: modelChainPresets.configJson })
             .from(modelChainPresets)
             .all()
-            .some(({ stepsJson }) => {
-                const parsed = parseJson<
-                    | Array<{ modelPresetId?: string }>
-                    | {
-                          steps?: Array<{ modelPresetId?: string }>
-                          layers?: Array<{ agents?: Array<{ modelPresetId?: string }> }>
-                      }
-                >(stepsJson, [])
-                const agents = Array.isArray(parsed)
-                    ? parsed
-                    : [
-                          ...(parsed.steps ?? []),
-                          ...(parsed.layers ?? []).flatMap((layer) => layer.agents ?? []),
-                      ]
+            .some(({ configJson }) => {
+                const parsed = parseJson<{
+                    layers?: Array<{ agents?: Array<{ modelPresetId?: string }> }>
+                }>(configJson, {})
+                const agents = (parsed.layers ?? []).flatMap((layer) => layer.agents ?? [])
                 return agents.some((agent) => agent.modelPresetId === id)
             })
         if (usedByChain) return 'in_use'
