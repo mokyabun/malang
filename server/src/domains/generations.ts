@@ -40,7 +40,7 @@ export function createGenerationDomain(context: AppContext) {
 }
 
 function requireConversation(context: AppContext, id: string) {
-    if (!context.store.conversations.getConversation(id)) {
+    if (!context.store.conversation.get(id)) {
         throw new NotFoundError('Conversation not found')
     }
 }

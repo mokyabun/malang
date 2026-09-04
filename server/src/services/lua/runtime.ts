@@ -115,7 +115,7 @@ export class LuaRuntime {
     }
 
     async trigger(conversationId: string, request: LuaTriggerRequest): Promise<LuaPhaseResult> {
-        if (this.store.generations.findRunningGeneration(conversationId)) {
+        if (this.store.generation.findRunning(conversationId)) {
             throw new LuaEventConflictError('Lua triggers are disabled while generation is running')
         }
         return this.executeEvent({
@@ -192,14 +192,14 @@ export class LuaRuntime {
                     warnings.push(...result.warnings)
                 }
                 const conversation = required(
-                    this.store.conversations.getConversation(input.conversationId),
+                    this.store.conversation.get(input.conversationId),
                     'Conversation disappeared during Lua event',
                 )
                 const result: LuaPhaseResult<T> = {
                     data: data as T,
                     stopSending,
                     warnings,
-                    messages: this.store.conversations.listMessages(input.conversationId),
+                    messages: this.store.message.list(input.conversationId),
                     displayEpoch: conversation.displayEpoch,
                 }
                 this.store.sqlite
@@ -436,7 +436,7 @@ export class LuaRuntime {
             'getGlobalVar',
             (token, key) =>
                 context(token) &&
-                (this.store.settings.getSettings().globalVariables[String(key)] ?? 'null'),
+                (this.store.settings.get().globalVariables[String(key)] ?? 'null'),
         )
         set('getChatMain', (token, index) => {
             const message = at(context(token).stage.messages, Number(index))
@@ -586,7 +586,7 @@ export class LuaRuntime {
         set('getBackgroundEmbedding', (token) => {
             const current = context(token)
             return current.owner.type === 'module'
-                ? this.store.prompts.getPromptModule(current.owner.id)?.backgroundEmbedding || ''
+                ? this.store.promptModule.get(current.owner.id)?.backgroundEmbedding || ''
                 : ''
         })
         set('setBackgroundEmbedding', (token, value) => {
@@ -860,11 +860,11 @@ export class LuaRuntime {
 
     private createStage(conversationId: string): InvocationStage {
         const conversation = required(
-            this.store.conversations.getConversation(conversationId),
+            this.store.conversation.get(conversationId),
             'Conversation not found',
         )
         return {
-            messages: this.store.conversations.listMessages(conversationId).map((message) => ({
+            messages: this.store.message.list(conversationId).map((message) => ({
                 id: message.id,
                 role: message.role,
                 content: message.content,
@@ -885,10 +885,7 @@ export class LuaRuntime {
         const stage = current.stage
         let epochBumped = false
         if (stage.changedMessages) {
-            this.store.conversations.replaceConversationMessages(
-                current.conversationId,
-                stage.messages,
-            )
+            this.store.message.replace(current.conversationId, stage.messages)
             epochBumped = true
         }
         if (stage.changedVariables) {
@@ -917,27 +914,27 @@ export class LuaRuntime {
                     )
             }
             if (!epochBumped && current.mode !== 'editDisplay') {
-                this.store.conversations.bumpDisplayEpoch(current.conversationId)
+                this.store.message.bumpDisplayEpoch(current.conversationId)
                 epochBumped = true
             }
         }
         if (Object.keys(stage.characterPatch).length) {
-            this.store.characters.updateCharacter(
+            this.store.character.update(
                 this.conversation(current).characterId,
                 stage.characterPatch,
             )
-            if (!epochBumped) this.store.conversations.bumpDisplayEpoch(current.conversationId)
+            if (!epochBumped) this.store.message.bumpDisplayEpoch(current.conversationId)
             epochBumped = true
         }
         if (stage.moduleBackgroundEmbedding !== undefined && current.owner.type === 'module') {
-            const module = this.store.prompts.getPromptModule(current.owner.id)
+            const module = this.store.promptModule.get(current.owner.id)
             if (module) {
-                this.store.prompts.updatePromptModule(module.id, {
+                this.store.promptModule.update(module.id, {
                     ...module,
                     backgroundEmbedding: stage.moduleBackgroundEmbedding,
                     luaScript: undefined,
                 })
-                if (!epochBumped) this.store.conversations.bumpDisplayEpoch(current.conversationId)
+                if (!epochBumped) this.store.message.bumpDisplayEpoch(current.conversationId)
                 epochBumped = true
             }
         }
@@ -958,7 +955,7 @@ export class LuaRuntime {
                 )
         }
         if ((stage.reloadDisplay || stage.loreUpserts.size) && !epochBumped) {
-            this.store.conversations.bumpDisplayEpoch(current.conversationId)
+            this.store.message.bumpDisplayEpoch(current.conversationId)
         }
     }
 
@@ -967,8 +964,8 @@ export class LuaRuntime {
         const character = this.character(current)
         if (Object.hasOwn(character.defaultVariables, key)) return character.defaultVariables[key]!
         const conversation = this.conversation(current)
-        const preset = this.store.prompts.getPromptPreset(
-            this.store.conversations.effectivePromptPresetId(conversation),
+        const preset = this.store.promptPreset.get(
+            this.store.conversation.effectivePromptPresetId(conversation),
         )
         if (preset && Object.hasOwn(preset.defaultVariables, key))
             return preset.defaultVariables[key]!
@@ -986,7 +983,7 @@ export class LuaRuntime {
                 trigger_id: current.triggerElementId,
             },
             variables: current.stage.variables,
-            globalVariables: this.store.settings.getSettings().globalVariables,
+            globalVariables: this.store.settings.get().globalVariables,
             toggles: {},
             messages: current.stage.messages,
         }).text
@@ -995,8 +992,8 @@ export class LuaRuntime {
     private loreBooks(current: InvocationContext, search: string) {
         const needle = search.toLocaleLowerCase()
         const character = this.character(current)
-        const modules = this.store.conversations
-            .listConversationModuleStates(current.conversationId)
+        const modules = this.store.conversationModule
+            .list(current.conversationId)
             .filter((state) => state.enabled)
             .flatMap((state) => state.module.lorebook)
         const local = this.store.sqlite
@@ -1020,11 +1017,11 @@ export class LuaRuntime {
 
     private scriptOwners(conversationId: string): LuaScriptOwnerSnapshot[] {
         const conversation = required(
-            this.store.conversations.getConversation(conversationId),
+            this.store.conversation.get(conversationId),
             'Conversation not found',
         )
         const character = required(
-            this.store.characters.getCharacter(conversation.characterId),
+            this.store.character.get(conversation.characterId),
             'Character not found',
         )
         const result: LuaScriptOwnerSnapshot[] = []
@@ -1037,8 +1034,8 @@ export class LuaRuntime {
             })
         }
         result.push(
-            ...this.store.conversations
-                .listConversationModuleStates(conversationId)
+            ...this.store.conversationModule
+                .list(conversationId)
                 .filter((state) => state.enabled && state.module.luaScript?.enabled)
                 .sort(
                     (a, b) =>
@@ -1057,24 +1054,18 @@ export class LuaRuntime {
 
     private character(current: InvocationContext) {
         const conversation = this.conversation(current)
-        return required(
-            this.store.characters.getCharacter(conversation.characterId),
-            'Character not found',
-        )
+        return required(this.store.character.get(conversation.characterId), 'Character not found')
     }
 
     private conversation(current: InvocationContext) {
         return required(
-            this.store.conversations.getConversation(current.conversationId),
+            this.store.conversation.get(current.conversationId),
             'Conversation not found',
         )
     }
 
     private persona(current: InvocationContext) {
-        return this.personas.effectiveFor(
-            this.conversation(current),
-            this.store.settings.getSettings(),
-        )
+        return this.personas.effectiveFor(this.conversation(current), this.store.settings.get())
     }
 
     private assetReference(assetId: string | null) {

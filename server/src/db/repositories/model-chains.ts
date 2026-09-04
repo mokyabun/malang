@@ -5,10 +5,10 @@ import type {
     ModelChainPreset,
     ModelChainPresetInput,
 } from '@malang/shared'
-import { and, asc, eq, max } from 'drizzle-orm'
+import { asc, eq, max } from 'drizzle-orm'
 
 import type { DatabaseHandle } from '../db'
-import { conversations, modelChainAgentMemories, modelChainPresets } from '../schema'
+import { conversations, modelChainPresets } from '../schema'
 import { iso, RepositoryBase, requireValue } from './base'
 
 export class ModelChainRepository extends RepositoryBase {
@@ -69,32 +69,6 @@ export class ModelChainRepository extends RepositoryBase {
             .where(eq(modelChainPresets.id, id))
             .run()
         return this.get(id)
-    }
-
-    getAgentMemory(conversationId: string, agentId: string): string {
-        return (
-            this.db
-                .select({ content: modelChainAgentMemories.content })
-                .from(modelChainAgentMemories)
-                .where(
-                    and(
-                        eq(modelChainAgentMemories.conversationId, conversationId),
-                        eq(modelChainAgentMemories.agentId, agentId),
-                    ),
-                )
-                .get()?.content ?? ''
-        )
-    }
-
-    setAgentMemory(conversationId: string, agentId: string, content: string): void {
-        this.db
-            .insert(modelChainAgentMemories)
-            .values({ conversationId, agentId, content, updatedAt: Date.now() })
-            .onConflictDoUpdate({
-                target: [modelChainAgentMemories.conversationId, modelChainAgentMemories.agentId],
-                set: { content, updatedAt: Date.now() },
-            })
-            .run()
     }
 
     delete(id: string): 'deleted' | 'in_use' | 'not_found' {

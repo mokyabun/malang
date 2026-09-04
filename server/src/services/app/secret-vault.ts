@@ -46,14 +46,14 @@ export class SecretVault {
     }
 
     hasSecret(): boolean {
-        return this.store.providers.getSecretStorage().providerSecret !== null
+        return this.store.secretStorage.get().providerSecret !== null
     }
 
     async unlock(password: string): Promise<void> {
-        const storage = this.store.providers.getSecretStorage()
+        const storage = this.store.secretStorage.get()
         const salt = storage.salt ?? encode(randomBytes(16))
         if (!storage.salt) {
-            this.store.providers.setSecretSalt(salt)
+            this.store.secretStorage.setSalt(salt)
         }
 
         const key = await deriveKey(password, decode(salt))
@@ -62,7 +62,7 @@ export class SecretVault {
     }
 
     async get(): Promise<string | null> {
-        const secret = this.store.providers.getSecretStorage().providerSecret
+        const secret = this.store.secretStorage.get().providerSecret
         if (!secret) return null
         if (!this.key) throw new SecretVaultLockedError()
         return decrypt(secret, this.key)
@@ -70,15 +70,15 @@ export class SecretVault {
 
     async set(value: string): Promise<void> {
         if (!this.key) throw new SecretVaultLockedError()
-        this.store.providers.setProviderSecret(await encrypt(value, this.key))
+        this.store.secretStorage.setSecret(await encrypt(value, this.key))
     }
 
     clear(): void {
-        this.store.providers.setProviderSecret(null)
+        this.store.secretStorage.setSecret(null)
     }
 
     async prepareRotation(currentPassword: string, newPassword: string): Promise<SecretRotation> {
-        const storage = this.store.providers.getSecretStorage()
+        const storage = this.store.secretStorage.get()
         const oldSalt = storage.salt
         let value: string | null = null
         if (storage.providerSecret) {

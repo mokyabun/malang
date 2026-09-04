@@ -17,38 +17,35 @@ export function createCharacterDomain(context: AppContext) {
         .get('/', (c) =>
             c.json({
                 characters: context.characters.list(c.req.query('archived') === 'true'),
-                groups: context.store.characters.listCharacterGroups(),
+                groups: context.store.characterGroup.list(),
             }),
         )
         .post('/', jsonValidator(CharacterCreateSchema), (c) =>
             c.json(context.characters.create(c.req.valid('json')), 201),
         )
         .post('/groups', jsonValidator(GroupCreateSchema), (c) =>
-            c.json(context.store.characters.createCharacterGroup(c.req.valid('json').name), 201),
+            c.json(context.store.characterGroup.create(c.req.valid('json').name), 201),
         )
         .patch('/groups/:groupId', jsonValidator(GroupUpdateSchema), (c) => {
             const name = c.req.valid('json').name
             if (!name) throw new ValidationError('Group name is required')
-            const group = context.store.characters.updateCharacterGroup(
-                c.req.param('groupId'),
-                name,
-            )
+            const group = context.store.characterGroup.update(c.req.param('groupId'), name)
             if (!group) throw new NotFoundError('Character group not found')
             return c.json(group)
         })
         .delete('/groups/:groupId', (c) => {
-            if (!context.store.characters.deleteCharacterGroup(c.req.param('groupId'))) {
+            if (!context.store.characterGroup.delete(c.req.param('groupId'))) {
                 throw new NotFoundError('Character group not found')
             }
             return c.body(null, 204)
         })
         .put('/organization', jsonValidator(CharacterOrganizationSchema), (c) => {
-            if (!context.store.characters.organizeCharacters(c.req.valid('json'))) {
+            if (!context.store.characterOrganization.update(c.req.valid('json'))) {
                 throw new ValidationError('Invalid character organization')
             }
             return c.json({
                 characters: context.characters.list(false),
-                groups: context.store.characters.listCharacterGroups(),
+                groups: context.store.characterGroup.list(),
             })
         })
         .post('/import', async (c) => {
@@ -122,12 +119,12 @@ export function createCharacterDomain(context: AppContext) {
             if (!context.characters.get(characterId)) {
                 throw new NotFoundError('Character not found')
             }
-            const generating = context.store.conversations
-                .listConversations(true)
+            const generating = context.store.conversation
+                .list(true)
                 .some(
                     (conversation) =>
                         conversation.characterId === characterId &&
-                        context.store.generations.findRunningGeneration(conversation.id),
+                        context.store.generation.findRunning(conversation.id),
                 )
             if (generating) {
                 throw new ConflictError('Character cannot be deleted while a generation is running')

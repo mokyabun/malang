@@ -5,7 +5,7 @@ import { appSettings } from '../schema'
 import { normalizeToggleValues, RepositoryBase, requireValue } from './base'
 
 export class SettingsRepository extends RepositoryBase {
-    ensureSettings(): void {
+    ensure(): void {
         if (this.db.select().from(appSettings).where(eq(appSettings.id, 1)).get()) return
         this.db
             .insert(appSettings)
@@ -24,8 +24,8 @@ export class SettingsRepository extends RepositoryBase {
             .run()
     }
 
-    getSettings(): AppSettings {
-        this.ensureSettings()
+    get(): AppSettings {
+        this.ensure()
         const row = requireValue(
             this.db.select().from(appSettings).where(eq(appSettings.id, 1)).get(),
             'Application settings are missing',
@@ -45,8 +45,8 @@ export class SettingsRepository extends RepositoryBase {
         }
     }
 
-    updateSettings(update: Partial<AppSettings>): AppSettings {
-        const current = this.getSettings()
+    update(update: Partial<AppSettings>): AppSettings {
+        const current = this.get()
         const next = { ...current, ...update }
         this.db
             .update(appSettings)
@@ -66,6 +66,6 @@ export class SettingsRepository extends RepositoryBase {
             })
             .where(eq(appSettings.id, 1))
             .run()
-        return this.getSettings()
+        return this.get()
     }
 }

@@ -7,21 +7,21 @@ import { type AppEnv, jsonValidator } from '@/utils'
 
 export function createModelChainDomain(context: AppContext) {
     return new Hono<AppEnv>()
-        .get('/', (c) => c.json({ presets: context.store.modelChains.list() }))
+        .get('/', (c) => c.json({ presets: context.store.modelChain.list() }))
         .post('/', jsonValidator(ModelChainPresetInputSchema), (c) => {
             const input = c.req.valid('json')
             validateStepModels(context, input)
-            return c.json(context.store.modelChains.create(input), 201)
+            return c.json(context.store.modelChain.create(input), 201)
         })
         .put('/:id', jsonValidator(ModelChainPresetInputSchema), (c) => {
             const input = c.req.valid('json')
             validateStepModels(context, input)
-            const preset = context.store.modelChains.update(c.req.param('id'), input)
+            const preset = context.store.modelChain.update(c.req.param('id'), input)
             if (!preset) throw new NotFoundError('Model chain preset not found')
             return c.json(preset)
         })
         .delete('/:id', (c) => {
-            const result = context.store.modelChains.delete(c.req.param('id'))
+            const result = context.store.modelChain.delete(c.req.param('id'))
             if (result === 'not_found') throw new NotFoundError('Model chain preset not found')
             if (result === 'in_use') {
                 throw new ConflictError('Model chain preset is in use by a conversation')

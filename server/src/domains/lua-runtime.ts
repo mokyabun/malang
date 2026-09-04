@@ -12,7 +12,7 @@ export function createConversationLuaDomain(context: AppContext) {
         jsonValidator(LuaTriggerRequestSchema),
         async (c) => {
             const conversationId = c.req.param('id')
-            if (!context.store.conversations.getConversation(conversationId)) {
+            if (!context.store.conversation.get(conversationId)) {
                 throw new NotFoundError('Conversation not found')
             }
             return c.json(await context.lua.trigger(conversationId, c.req.valid('json')))

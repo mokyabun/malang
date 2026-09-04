@@ -27,11 +27,11 @@ export class CharacterService {
     ) {}
 
     list(includeArchived = false) {
-        return this.store.characters.listCharacters(includeArchived)
+        return this.store.character.list(includeArchived)
     }
 
     get(id: string) {
-        return this.store.characters.getCharacter(id)
+        return this.store.character.get(id)
     }
 
     create(input: CharacterCreate) {
@@ -57,7 +57,7 @@ export class CharacterService {
                 extensions: {},
             },
         }
-        return this.store.characters.createCharacter(
+        return this.store.character.create(
             {
                 id,
                 ...input,
@@ -74,39 +74,39 @@ export class CharacterService {
     }
 
     update(id: string, update: CharacterUpdate) {
-        return this.store.characters.updateCharacter(id, update)
+        return this.store.character.update(id, update)
     }
 
     archive(id: string) {
-        return this.store.characters.archiveCharacter(id)
+        return this.store.character.archive(id)
     }
 
     delete(id: string) {
-        return this.store.characters.deleteCharacter(id)
+        return this.store.character.delete(id)
     }
 
     restore(id: string) {
-        return this.store.characters.restoreCharacter(id)
+        return this.store.character.restore(id)
     }
 
     async setAvatar(id: string, bytes: Uint8Array, mimeType: string) {
         if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mimeType)) {
             throw new ValidationError('Avatar must be a PNG, JPEG, WebP, or GIF image')
         }
-        if (!this.store.characters.getCharacter(id)) return null
+        if (!this.store.character.get(id)) return null
         const asset = await this.assetStore.put(bytes, mimeType)
-        return this.store.characters.setCharacterAvatar(id, asset.id)
+        return this.store.character.setAvatar(id, asset.id)
     }
 
     removeAvatar(id: string) {
-        return this.store.characters.setCharacterAvatar(id, null)
+        return this.store.character.setAvatar(id, null)
     }
 
     assets(id: string) {
-        const character = this.store.characters.getCharacter(id)
+        const character = this.store.character.get(id)
         if (!character) return null
-        const linked = this.store.characters.getCharacterAssetLinks(id).flatMap((link) => {
-            const asset = this.store.assets.getAsset(link.assetId)
+        const linked = this.store.characterAsset.list(id).flatMap((link) => {
+            const asset = this.store.asset.get(link.assetId)
             return asset
                 ? [
                       {
@@ -125,7 +125,7 @@ export class CharacterService {
             character.avatarAssetId &&
             !linked.some((asset) => asset.assetId === character.avatarAssetId)
         ) {
-            const avatar = this.store.assets.getAsset(character.avatarAssetId)
+            const avatar = this.store.asset.get(character.avatarAssetId)
             if (avatar) {
                 linked.unshift({
                     assetId: avatar.id,
@@ -166,7 +166,7 @@ export class CharacterService {
         const risu = record(data.extensions?.risuai)
         const lua = normalizeLuaTriggers(risu.triggerscript, risu.lowLevelAccess)
         const book = data.character_book
-        const character = this.store.characters.createCharacter(
+        const character = this.store.character.create(
             {
                 id,
                 name: data.name || 'Unnamed',
@@ -218,9 +218,9 @@ export class CharacterService {
     }
 
     async export(id: string, spec: 'v2' | 'v3', format: 'json' | 'png' | 'charx') {
-        const character = this.store.characters.getCharacter(id)
+        const character = this.store.character.get(id)
         if (!character) return null
-        const loreExtensions = this.store.characters.getCharacterLoreExtensions(id)
+        const loreExtensions = this.store.characterLore.extensions(id)
         const raw = structuredClone(character.sourceCard) as unknown as CharacterCardV3
         const card = raw?.spec === 'chara_card_v3' ? raw : this.blankCard()
         card.spec = 'chara_card_v3'
@@ -296,7 +296,7 @@ export class CharacterService {
             )
         }
         if (character.avatarAssetId) {
-            const asset = this.store.assets.getAsset(character.avatarAssetId)
+            const asset = this.store.asset.get(character.avatarAssetId)
             const bytes = await this.assetStore.read(character.avatarAssetId)
             if (asset && bytes) {
                 exportable.avatar = {
@@ -310,8 +310,8 @@ export class CharacterService {
             }
         }
 
-        for (const link of this.store.characters.getCharacterAssetLinks(id)) {
-            const asset = this.store.assets.getAsset(link.assetId)
+        for (const link of this.store.characterAsset.list(id)) {
+            const asset = this.store.asset.get(link.assetId)
             const bytes = await this.assetStore.read(link.assetId)
             if (!asset || !bytes) continue
             exportable.assets.push({

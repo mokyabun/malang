@@ -58,7 +58,7 @@ describe('PocketRisu Lua runtime', () => {
                 lowLevelAccess: true,
             },
         })
-        conversationId = context.store.conversations.createConversation({
+        conversationId = context.store.conversation.create({
             characterId: character.id,
             greetingIndex: -1,
         }).id
@@ -80,9 +80,7 @@ describe('PocketRisu Lua runtime', () => {
             triggerElementId: 'init',
         }
         await context.lua.trigger(conversationId, request)
-        expect(
-            context.store.conversations.getConversation(conversationId)?.variables,
-        ).toMatchObject({
+        expect(context.store.conversation.get(conversationId)?.variables).toMatchObject({
             ero_Init: '0',
             ero_Language: '1',
             ero_startHP: '1000',
@@ -99,8 +97,7 @@ describe('PocketRisu Lua runtime', () => {
     })
 
     test('supports named triggers, button data, and one display batch per epoch', async () => {
-        const before =
-            context.store.conversations.getConversation(conversationId)?.variables.ero_choice_flag
+        const before = context.store.conversation.get(conversationId)?.variables.ero_choice_flag
         await context.lua.trigger(conversationId, {
             type: 'manual',
             name: 'setChoiceFlag',
@@ -108,9 +105,9 @@ describe('PocketRisu Lua runtime', () => {
             clientInstanceId: crypto.randomUUID(),
             triggerElementId: 'choice',
         })
-        expect(
-            context.store.conversations.getConversation(conversationId)?.variables.ero_choice_flag,
-        ).not.toBe(before)
+        expect(context.store.conversation.get(conversationId)?.variables.ero_choice_flag).not.toBe(
+            before,
+        )
         await context.lua.trigger(conversationId, {
             type: 'button',
             data: 'choice^Take the silver key',
@@ -118,13 +115,13 @@ describe('PocketRisu Lua runtime', () => {
             clientInstanceId: crypto.randomUUID(),
             triggerElementId: 'button',
         })
-        expect(context.store.conversations.listMessages(conversationId).at(-1)).toMatchObject({
+        expect(context.store.message.list(conversationId).at(-1)).toMatchObject({
             role: 'user',
         })
-        expect(context.store.conversations.listMessages(conversationId).at(-1)?.content).toContain(
+        expect(context.store.message.list(conversationId).at(-1)?.content).toContain(
             'Take the silver key',
         )
-        context.store.conversations.createMessage(conversationId, 'assistant', 'Status', 'complete')
+        context.store.message.create(conversationId, 'assistant', 'Status', 'complete')
         const first = await context.generations.messagesWithDisplay(conversationId)
         const second = await context.generations.messagesWithDisplay(conversationId)
         expect(first.at(-1)?.displayContent).toContain('ERO STATUS')
@@ -165,9 +162,7 @@ describe('PocketRisu Lua runtime', () => {
         ).toBe('ok')
         // The success alert is fire-and-forget and does not block completion.
         await invocation
-        expect(
-            context.store.conversations.getConversation(conversationId)?.variables.ero_startHP,
-        ).toBe('250')
+        expect(context.store.conversation.get(conversationId)?.variables.ero_startHP).toBe('250')
         await reader.cancel()
     })
 
@@ -204,7 +199,7 @@ describe('PocketRisu Lua runtime', () => {
                 defaultVariables: {},
                 luaScript: { code, enabled: true, lowLevelAccess: false },
             })
-            return context.store.conversations.createConversation({
+            return context.store.conversation.create({
                 characterId: character.id,
                 greetingIndex: -1,
             }).id
@@ -222,10 +217,9 @@ describe('PocketRisu Lua runtime', () => {
             clientInstanceId: crypto.randomUUID(),
         })
         expect(callback.warnings.join('\n')).toContain('expected callback failure')
-        expect(
-            context.store.conversations.getConversation(callbackConversation)?.variables
-                .before_error,
-        ).toBe('saved')
+        expect(context.store.conversation.get(callbackConversation)?.variables.before_error).toBe(
+            'saved',
+        )
 
         const timeoutConversation = makeConversation(`
             function spin(id)
@@ -242,8 +236,7 @@ describe('PocketRisu Lua runtime', () => {
             }),
         ).rejects.toThrow(/timeout/i)
         expect(
-            context.store.conversations.getConversation(timeoutConversation)?.variables
-                .must_not_commit,
+            context.store.conversation.get(timeoutConversation)?.variables.must_not_commit,
         ).toBeUndefined()
     })
 })

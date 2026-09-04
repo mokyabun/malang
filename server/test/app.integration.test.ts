@@ -206,7 +206,7 @@ describe('Hono API and SQLite persistence', () => {
             expect(response.status).toBe(409)
         }
 
-        expect(context.store.characters.getCharacter(GENERAL_CHAT_CHARACTER_ID)?.name).toBe('Chat')
+        expect(context.store.character.get(GENERAL_CHAT_CHARACTER_ID)?.name).toBe('Chat')
     })
 
     test('imports a card, creates a conversation, and previews the compiled prompt', async () => {
@@ -229,12 +229,7 @@ describe('Hono API and SQLite persistence', () => {
         })
         expect(created.status).toBe(201)
         conversationId = ((await created.json()) as { id: string }).id
-        context.store.conversations.createMessage(
-            conversationId,
-            'user',
-            'Tell me about the moon.',
-            'complete',
-        )
+        context.store.message.create(conversationId, 'user', 'Tell me about the moon.', 'complete')
 
         const preview = await app.request(
             `/api/v1/conversations/${conversationId}/prompt-preview`,
@@ -278,7 +273,7 @@ describe('Hono API and SQLite persistence', () => {
             }),
         })
         expect(organizedCharacters.status).toBe(200)
-        expect(context.store.characters.getCharacter(characterId)).toMatchObject({
+        expect(context.store.character.get(characterId)).toMatchObject({
             groupId: characterGroup.id,
             sortOrder: 0,
         })
@@ -301,7 +296,7 @@ describe('Hono API and SQLite persistence', () => {
             }),
         })
         expect(organizedChats.status).toBe(200)
-        expect(context.store.conversations.getConversation(conversationId)).toMatchObject({
+        expect(context.store.conversation.get(conversationId)).toMatchObject({
             groupId: chatGroup.id,
             sortOrder: 0,
         })
@@ -314,7 +309,7 @@ describe('Hono API and SQLite persistence', () => {
                 })
             ).status,
         ).toBe(204)
-        expect(context.store.conversations.getConversation(conversationId)?.groupId).toBeNull()
+        expect(context.store.conversation.get(conversationId)?.groupId).toBeNull()
 
         expect(
             (
@@ -324,11 +319,11 @@ describe('Hono API and SQLite persistence', () => {
                 })
             ).status,
         ).toBe(204)
-        expect(context.store.characters.getCharacter(characterId)?.groupId).toBeNull()
+        expect(context.store.character.get(characterId)?.groupId).toBeNull()
     })
 
     test('edits the complete card workspace and conversation opening state', async () => {
-        const current = context.store.characters.getCharacter(characterId)!
+        const current = context.store.character.get(characterId)!
         const loreEntry = current.lorebook![0]!
         const loreId = loreEntry.id
         const edited = await app.request(`/api/v1/characters/${characterId}`, {
@@ -381,7 +376,7 @@ describe('Hono API and SQLite persistence', () => {
         }
         expect(alternate.greetingIndex).toBe(0)
         expect(alternate.title).toBe('Chat 2')
-        expect(context.store.conversations.listMessages(alternate.id)[0]?.content).toBe(
+        expect(context.store.message.list(alternate.id)[0]?.content).toBe(
             'The archive remembered you.',
         )
 
@@ -392,9 +387,7 @@ describe('Hono API and SQLite persistence', () => {
         })
         expect(switchedGreeting.status).toBe(200)
         expect((await switchedGreeting.json()) as object).toMatchObject({ greetingIndex: -1 })
-        expect(context.store.conversations.listMessages(alternate.id)[0]?.content).toBe(
-            current.firstMessage,
-        )
+        expect(context.store.message.list(alternate.id)[0]?.content).toBe(current.firstMessage)
 
         const annotated = await app.request(`/api/v1/conversations/${alternate.id}`, {
             method: 'PATCH',
@@ -444,12 +437,7 @@ describe('Hono API and SQLite persistence', () => {
             })
 
         const first = (await (await createConversation()).json()) as { id: string }
-        context.store.conversations.createMessage(
-            first.id,
-            'user',
-            'This history will be deleted.',
-            'complete',
-        )
+        context.store.message.create(first.id, 'user', 'This history will be deleted.', 'complete')
         expect(
             (
                 await app.request(`/api/v1/conversations/${first.id}/permanent`, {
@@ -458,8 +446,8 @@ describe('Hono API and SQLite persistence', () => {
                 })
             ).status,
         ).toBe(204)
-        expect(context.store.conversations.getConversation(first.id)).toBeNull()
-        expect(context.store.conversations.listMessages(first.id)).toEqual([])
+        expect(context.store.conversation.get(first.id)).toBeNull()
+        expect(context.store.message.list(first.id)).toEqual([])
 
         const second = (await (await createConversation()).json()) as { id: string }
         expect(
@@ -470,17 +458,17 @@ describe('Hono API and SQLite persistence', () => {
                 })
             ).status,
         ).toBe(204)
-        expect(context.store.characters.getCharacter(temporaryCharacterId)).toBeNull()
-        expect(context.store.conversations.getConversation(second.id)).toBeNull()
+        expect(context.store.character.get(temporaryCharacterId)).toBeNull()
+        expect(context.store.conversation.get(second.id)).toBeNull()
     })
 
     test('runs prompt modules, lore, and toggles entirely on the server', async () => {
-        const conversation = context.store.conversations.getConversation(conversationId)
+        const conversation = context.store.conversation.get(conversationId)
         const preset = conversation
-            ? context.store.prompts.getPromptPreset(conversation.promptPresetId)
+            ? context.store.promptPreset.get(conversation.promptPresetId)
             : null
         if (!preset) throw new Error('Missing integration prompt preset')
-        context.store.prompts.updatePromptPreset(preset.id, {
+        context.store.promptPreset.update(preset.id, {
             name: preset.name,
             blocks: preset.blocks,
             parameters: preset.parameters,
@@ -547,7 +535,7 @@ describe('Hono API and SQLite persistence', () => {
         expect(created.status).toBe(201)
         moduleId = ((await created.json()) as { id: string }).id
         const moduleAsset = await context.assets.put(new Uint8Array([137, 80, 78, 71]), 'image/png')
-        context.store.prompts.setPromptModuleAssets(moduleId, [
+        context.store.promptModuleAsset.replace(moduleId, [
             {
                 id: crypto.randomUUID(),
                 moduleId,
@@ -671,12 +659,12 @@ describe('Hono API and SQLite persistence', () => {
     })
 
     test('follows the global prompt unless a conversation locks its preset', async () => {
-        const originalPresetId = context.store.settings.getSettings().defaultPromptPresetId
+        const originalPresetId = context.store.settings.get().defaultPromptPresetId
         const originalPreset = originalPresetId
-            ? context.store.prompts.getPromptPreset(originalPresetId)
+            ? context.store.promptPreset.get(originalPresetId)
             : null
         if (!originalPreset) throw new Error('Missing global prompt preset')
-        const globalPreset = context.store.prompts.createPromptPreset({
+        const globalPreset = context.store.promptPreset.create({
             name: 'Global preset test',
             blocks: [
                 {
@@ -696,7 +684,7 @@ describe('Hono API and SQLite persistence', () => {
             moduleIntegrations: originalPreset.moduleIntegrations,
             promptSettings: originalPreset.promptSettings,
         })
-        const otherConversation = context.store.conversations.createConversation({
+        const otherConversation = context.store.conversation.create({
             characterId,
             greetingIndex: -1,
         })
@@ -761,12 +749,12 @@ describe('Hono API and SQLite persistence', () => {
             ),
         ).toBeTrue()
 
-        context.store.settings.updateSettings({ defaultPromptPresetId: originalPreset.id })
-        expect(context.store.prompts.deletePromptPreset(globalPreset.id)).toBe('deleted')
+        context.store.settings.update({ defaultPromptPresetId: originalPreset.id })
+        expect(context.store.promptPreset.delete(globalPreset.id)).toBe('deleted')
     })
 
     test('imports and exports standalone Risu regex scripts on a prompt preset', async () => {
-        const conversation = context.store.conversations.getConversation(conversationId)
+        const conversation = context.store.conversation.get(conversationId)
         if (!conversation) throw new Error('Missing conversation')
         const imported = await app.request(
             `/api/v1/prompt-presets/${conversation.promptPresetId}/regex/import`,
@@ -808,7 +796,7 @@ describe('Hono API and SQLite persistence', () => {
     })
 
     test('imports and exports RPack .risup prompt presets through the API', async () => {
-        const conversation = context.store.conversations.getConversation(conversationId)
+        const conversation = context.store.conversation.get(conversationId)
         if (!conversation) throw new Error('Missing conversation')
         const exported = await app.request(
             `/api/v1/prompt-presets/${conversation.promptPresetId}/export?format=risup`,
@@ -834,7 +822,7 @@ describe('Hono API and SQLite persistence', () => {
     })
 
     test('persists normalized data after reopening SQLite', async () => {
-        const recoverable = context.store.prompts.createPromptModule(
+        const recoverable = context.store.promptModule.create(
             {
                 name: 'Recoverable module',
                 description: '',
@@ -857,15 +845,13 @@ describe('Hono API and SQLite persistence', () => {
         context.close()
         context = await createContext({ ...config, adminPassword: undefined })
         app = createApp(context)
-        expect(context.store.characters.getCharacter(characterId)?.name).toBe('Aria')
-        expect(context.store.conversations.getConversation(conversationId)?.title).toBe(
-            'Library chat',
+        expect(context.store.character.get(characterId)?.name).toBe('Aria')
+        expect(context.store.conversation.get(conversationId)?.title).toBe('Library chat')
+        expect(context.store.message.list(conversationId)).toHaveLength(2)
+        expect(context.store.promptModule.get(recoveredModuleId)?.toggles).toEqual([])
+        expect(context.store.promptModule.get(recoveredModuleId)?.backgroundEmbedding).toContain(
+            '.risu-chat',
         )
-        expect(context.store.conversations.listMessages(conversationId)).toHaveLength(2)
-        expect(context.store.prompts.getPromptModule(recoveredModuleId)?.toggles).toEqual([])
-        expect(
-            context.store.prompts.getPromptModule(recoveredModuleId)?.backgroundEmbedding,
-        ).toContain('.risu-chat')
     })
 
     test('streams Ollama output and blocks concurrent or duplicate generations', async () => {
@@ -880,12 +866,12 @@ describe('Hono API and SQLite persistence', () => {
             }),
         })
         expect(configured.status).toBe(200)
-        const conversation = context.store.conversations.getConversation(conversationId)
+        const conversation = context.store.conversation.get(conversationId)
         const preset = conversation
-            ? context.store.prompts.getPromptPreset(conversation.promptPresetId)
+            ? context.store.promptPreset.get(conversation.promptPresetId)
             : null
         if (!preset) throw new Error('Missing request-debug preset')
-        context.store.prompts.updatePromptPreset(preset.id, {
+        context.store.promptPreset.update(preset.id, {
             name: preset.name,
             blocks: preset.blocks,
             parameters: {
@@ -961,8 +947,8 @@ describe('Hono API and SQLite persistence', () => {
             },
         })
 
-        const assistant = context.store.conversations
-            .listMessages(conversationId)
+        const assistant = context.store.message
+            .list(conversationId)
             .findLast(
                 (message) =>
                     message.role === 'assistant' && message.content === 'Hello from Ollama',
@@ -1024,9 +1010,9 @@ describe('Hono API and SQLite persistence', () => {
         await response.body!.cancel('browser closed')
         await Bun.sleep(550)
 
-        const run = context.store.generations.getGeneration(generationId)
+        const run = context.store.generation.get(generationId)
         expect(run).toMatchObject({ status: 'complete', outputText: 'Hello from Ollama' })
-        expect(context.store.conversations.getMessage(run!.messageId!)).toMatchObject({
+        expect(context.store.message.get(run!.messageId!)).toMatchObject({
             content: 'Hello from Ollama',
             status: 'complete',
         })
@@ -1054,10 +1040,10 @@ describe('Hono API and SQLite persistence', () => {
         })
         expect(cancelled.status).toBe(204)
         await response.text()
-        const run = context.store.generations.getGeneration(generationId)
+        const run = context.store.generation.get(generationId)
         expect(run?.status).toBe('cancelled')
         expect(run?.messageId).toBeTruthy()
-        expect(context.store.conversations.getMessage(run!.messageId!)).toMatchObject({
+        expect(context.store.message.get(run!.messageId!)).toMatchObject({
             content: 'Hello',
             status: 'cancelled',
         })

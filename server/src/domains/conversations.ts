@@ -42,10 +42,8 @@ export function createConversationDomain(context: AppContext) {
     return new Hono<AppEnv>()
         .get('/', (c) =>
             c.json({
-                conversations: context.store.conversations.listConversations(
-                    c.req.query('archived') === 'true',
-                ),
-                groups: context.store.conversations.listConversationGroups(),
+                conversations: context.store.conversation.list(c.req.query('archived') === 'true'),
+                groups: context.store.conversationGroup.list(),
             }),
         )
         .post('/', jsonValidator(ConversationCreateSchema), (c) => {
@@ -74,51 +72,45 @@ export function createConversationDomain(context: AppContext) {
             }
             if (
                 input.modelChainPresetId &&
-                !context.store.modelChains.get(input.modelChainPresetId)
+                !context.store.modelChain.get(input.modelChainPresetId)
             ) {
                 throw new NotFoundError('Model chain preset not found')
             }
-            return c.json(context.store.conversations.createConversation(input), 201)
+            return c.json(context.store.conversation.create(input), 201)
         })
         .post('/groups', jsonValidator(ConversationGroupCreateBody), (c) => {
             const input = c.req.valid('json')
-            const group = context.store.conversations.createConversationGroup(
-                input.characterId,
-                input.name,
-            )
+            const group = context.store.conversationGroup.create(input.characterId, input.name)
             if (!group) throw new NotFoundError('Character not found')
             return c.json(group, 201)
         })
         .patch('/groups/:groupId', jsonValidator(GroupUpdateSchema), (c) => {
             const name = c.req.valid('json').name
             if (!name) throw new ValidationError('Group name is required')
-            const group = context.store.conversations.updateConversationGroup(
-                c.req.param('groupId'),
-                name,
-            )
+            const group = context.store.conversationGroup.update(c.req.param('groupId'), name)
             if (!group) throw new NotFoundError('Chat group not found')
             return c.json(group)
         })
         .delete('/groups/:groupId', (c) => {
-            if (!context.store.conversations.deleteConversationGroup(c.req.param('groupId'))) {
+            if (!context.store.conversationGroup.delete(c.req.param('groupId'))) {
                 throw new NotFoundError('Chat group not found')
             }
             return c.body(null, 204)
         })
         .put('/organization', jsonValidator(ConversationOrganizationSchema), (c) => {
             const input = c.req.valid('json')
-            if (!context.store.conversations.organizeConversations(input)) {
+            if (!context.store.conversationOrganization.update(input)) {
                 throw new ValidationError('Invalid chat organization')
             }
             return c.json({
-                conversations: context.store.conversations
-                    .listConversations(false)
+                conversations: context.store.conversation
+                    .list(false)
                     .filter((conversation) => conversation.characterId === input.characterId),
-                groups: context.store.conversations.listConversationGroups(input.characterId),
+                groups: context.store.conversationGroup.list(input.characterId),
             })
         })
         .post('/:id/restore', (c) => {
-            if (!context.store.conversations.restoreConversation(c.req.param('id'))) {
+            if (!context.store.conversation.restore(c.req.param('id'))) {
                 throw new NotFoundError('Conversation not found')
             }
             return c.json(requireConversation(context, c.req.param('id')))
@@ -126,7 +118,7 @@ export function createConversationDomain(context: AppContext) {
         .get('/:id/generation', (c) => {
             requireConversation(context, c.req.param('id'))
             return c.json({
-                generation: context.store.generations.getActiveGeneration(c.req.param('id')),
+                generation: context.store.generation.active(c.req.param('id')),
             })
         })
         .get('/:id/messages', async (c) => {
@@ -194,43 +186,43 @@ export function createConversationDomain(context: AppContext) {
             return c.json({ modules: context.modules.conversationStates(c.req.param('id')) })
         })
         .patch('/:id/messages/:messageId', jsonValidator(MessagePatchBody), (c) => {
-            const message = context.store.conversations.getMessage(c.req.param('messageId'))
+            const message = context.store.message.get(c.req.param('messageId'))
             if (!message || message.conversationId !== c.req.param('id')) {
                 throw new NotFoundError('Message not found')
             }
-            const updated = context.store.conversations.updateMessage(message.id, {
+            const updated = context.store.message.update(message.id, {
                 content: c.req.valid('json').content,
             })
             if (!updated) throw new NotFoundError('Message not found')
             return c.json(updated)
         })
         .delete('/:id/messages/:messageId/after', (c) => {
-            const message = context.store.conversations.getMessage(c.req.param('messageId'))
+            const message = context.store.message.get(c.req.param('messageId'))
             if (!message || message.conversationId !== c.req.param('id')) {
                 throw new NotFoundError('Message not found')
             }
             return c.json({
-                deleted: context.store.conversations.truncateMessages(
+                deleted: context.store.message.truncate(
                     message.conversationId,
                     message.position + 1,
                 ),
             })
         })
         .get('/:id/messages/:messageId/generations', (c) => {
-            const message = context.store.conversations.getMessage(c.req.param('messageId'))
+            const message = context.store.message.get(c.req.param('messageId'))
             if (!message || message.conversationId !== c.req.param('id')) {
                 throw new NotFoundError('Message not found')
             }
             return c.json({
-                generations: context.store.generations.listMessageGenerations(message.id),
+                generations: context.store.generation.listByMessage(message.id),
             })
         })
         .put('/:id/messages/:messageId/generation', jsonValidator(GenerationSelectionBody), (c) => {
-            const message = context.store.conversations.getMessage(c.req.param('messageId'))
+            const message = context.store.message.get(c.req.param('messageId'))
             if (!message || message.conversationId !== c.req.param('id')) {
                 throw new NotFoundError('Message not found')
             }
-            const updated = context.store.generations.selectGenerationOutput(
+            const updated = context.store.generation.selectOutput(
                 message.id,
                 c.req.valid('json').generationId,
             )
@@ -257,10 +249,7 @@ export function createConversationDomain(context: AppContext) {
             ) {
                 throw new NotFoundError('Auxiliary model preset not found')
             }
-            if (
-                body.modelChainPresetId &&
-                !context.store.modelChains.get(body.modelChainPresetId)
-            ) {
+            if (body.modelChainPresetId && !context.store.modelChain.get(body.modelChainPresetId)) {
                 throw new NotFoundError('Model chain preset not found')
             }
 
@@ -275,7 +264,7 @@ export function createConversationDomain(context: AppContext) {
                 if (greeting === undefined) {
                     throw new ValidationError('Greeting does not exist')
                 }
-                const updated = context.store.conversations.updateConversationGreeting(
+                const updated = context.store.conversation.updateGreeting(
                     conversation.id,
                     body.greetingIndex,
                     greeting,
@@ -287,10 +276,7 @@ export function createConversationDomain(context: AppContext) {
                 }
             }
 
-            const conversation = context.store.conversations.updateConversation(
-                c.req.param('id'),
-                body,
-            )
+            const conversation = context.store.conversation.update(c.req.param('id'), body)
             if (!conversation) {
                 throw new NotFoundError('Conversation not found')
             }
@@ -298,18 +284,18 @@ export function createConversationDomain(context: AppContext) {
         })
         .delete('/:id/permanent', (c) => {
             const conversationId = c.req.param('id')
-            if (context.store.generations.findRunningGeneration(conversationId)) {
+            if (context.store.generation.findRunning(conversationId)) {
                 throw new ConflictError(
                     'Conversation cannot be deleted while a generation is running',
                 )
             }
-            if (!context.store.conversations.deleteConversation(conversationId)) {
+            if (!context.store.conversation.delete(conversationId)) {
                 throw new NotFoundError('Conversation not found')
             }
             return c.body(null, 204)
         })
         .delete('/:id', (c) => {
-            if (!context.store.conversations.archiveConversation(c.req.param('id'))) {
+            if (!context.store.conversation.archive(c.req.param('id'))) {
                 throw new NotFoundError('Conversation not found')
             }
             return c.body(null, 204)
@@ -317,7 +303,7 @@ export function createConversationDomain(context: AppContext) {
 }
 
 function requireConversation(context: AppContext, id: string) {
-    const conversation = context.store.conversations.getConversation(id)
+    const conversation = context.store.conversation.get(id)
     if (!conversation) throw new NotFoundError('Conversation not found')
     return conversation
 }

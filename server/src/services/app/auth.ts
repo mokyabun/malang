@@ -12,7 +12,7 @@ export class AuthService {
     ) {}
 
     async bootstrap(password?: string): Promise<void> {
-        if (this.store.auth.getAdmin()) {
+        if (this.store.admin.get()) {
             if (password) {
                 try {
                     await this.vault.unlock(password)
@@ -23,27 +23,27 @@ export class AuthService {
             return
         }
         if (!password) throw new Error('ADMIN_PASSWORD is required on first startup')
-        this.store.auth.createAdmin(await Bun.password.hash(password, { algorithm: 'argon2id' }))
+        this.store.admin.create(await Bun.password.hash(password, { algorithm: 'argon2id' }))
         await this.vault.unlock(password)
     }
 
     async login(password: string): Promise<{ token: string; expiresAt: number } | null> {
-        const admin = this.store.auth.getAdmin()
+        const admin = this.store.admin.get()
         if (!admin || !(await Bun.password.verify(password, admin.passwordHash))) return null
         await this.vault.unlock(password)
         const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')
         const expiresAt = Date.now() + sessionLifetimeMs
-        this.store.auth.createSession(admin.id, await this.hashToken(token), expiresAt)
+        this.store.session.create(admin.id, await this.hashToken(token), expiresAt)
         return { token, expiresAt }
     }
 
     async authenticate(token: string): Promise<{ adminId: string } | null> {
-        const session = this.store.auth.getSession(await this.hashToken(token))
+        const session = this.store.session.get(await this.hashToken(token))
         return session ? { adminId: session.adminId } : null
     }
 
     async logout(token: string): Promise<void> {
-        this.store.auth.deleteSession(await this.hashToken(token))
+        this.store.session.delete(await this.hashToken(token))
     }
 
     async changePassword(
@@ -51,7 +51,7 @@ export class AuthService {
         currentPassword: string,
         newPassword: string,
     ): Promise<boolean> {
-        const admin = this.store.auth.getAdmin()
+        const admin = this.store.admin.get()
         if (
             !admin ||
             admin.id !== adminId ||
@@ -59,7 +59,7 @@ export class AuthService {
         )
             return false
         const rotation = await this.vault.prepareRotation(currentPassword, newPassword)
-        this.store.auth.rotateAdminPassword(
+        this.store.credentialRotation.run(
             adminId,
             await Bun.password.hash(newPassword, { algorithm: 'argon2id' }),
             rotation.salt,

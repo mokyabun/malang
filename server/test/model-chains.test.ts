@@ -50,7 +50,7 @@ describe('server-side model chains', () => {
 
     test('keeps single-model generation as the default and runs selected chains on the server', async () => {
         const createEcho = (name: string, message: string) =>
-            context.store.providers.createModelPreset({
+            context.store.modelPreset.create({
                 name,
                 apiKeyId: null,
                 config: {
@@ -64,18 +64,16 @@ describe('server-side model chains', () => {
         const analyst = createEcho('Analyst', 'PRE NOTE')
         const editor = createEcho('Editor', 'POST BODY')
 
-        const single = context.store.conversations.createConversation({
+        const single = context.store.conversation.create({
             characterId: GENERAL_CHAT_CHARACTER_ID,
             modelPresetId: main.id,
             greetingIndex: -1,
         })
         expect(single.modelChainPresetId).toBeNull()
         await runGeneration(context, single.id, 'single request')
-        expect(context.store.conversations.getLastAssistantMessage(single.id)?.content).toBe(
-            'MAIN BODY',
-        )
+        expect(context.store.message.lastAssistant(single.id)?.content).toBe('MAIN BODY')
 
-        const chain = context.store.modelChains.create({
+        const chain = context.store.modelChain.create({
             name: 'Review chain',
             description: 'Pre and post',
             layers: [
@@ -93,27 +91,27 @@ describe('server-side model chains', () => {
                 },
             ],
         })
-        const chained = context.store.conversations.createConversation({
+        const chained = context.store.conversation.create({
             characterId: GENERAL_CHAT_CHARACTER_ID,
             modelPresetId: main.id,
             modelChainPresetId: chain.id,
             greetingIndex: -1,
         })
-        context.store.generations.clearRequestDebugRecords()
-        context.store.settings.updateSettings({ requestDebugEnabled: true })
+        context.store.requestDebug.clear()
+        context.store.settings.update({ requestDebugEnabled: true })
         await runGeneration(context, chained.id, 'chained request')
-        context.store.settings.updateSettings({ requestDebugEnabled: false })
-        const message = context.store.conversations.getLastAssistantMessage(chained.id)
+        context.store.settings.update({ requestDebugEnabled: false })
+        const message = context.store.message.lastAssistant(chained.id)
         expect(message?.content).toBe('POST BODY')
-        expect(context.store.generations.listMessageGenerations(message!.id)[0]).toMatchObject({
+        expect(context.store.generation.listByMessage(message!.id)[0]).toMatchObject({
             outputText: 'POST BODY',
             processedOutputText: 'POST BODY',
         })
-        expect(context.store.modelChains.delete(chain.id)).toBe('in_use')
-        expect(context.store.providers.deleteModelPreset(analyst.id)).toBe('in_use')
+        expect(context.store.modelChain.delete(chain.id)).toBe('in_use')
+        expect(context.store.modelPreset.delete(analyst.id)).toBe('in_use')
 
-        const debugRecords = context.store.generations
-            .listRequestDebugRecords()
+        const debugRecords = context.store.requestDebug
+            .list()
             .filter((record) => record.conversationId === chained.id)
         expect(debugRecords).toHaveLength(3)
         expect(debugRecords.find((record) => !record.request.chain)).toMatchObject({
@@ -147,7 +145,7 @@ describe('server-side model chains', () => {
 
     test('runs multiple pre and post agents concurrently and applies post results in order', async () => {
         const createEcho = (name: string, message: string, delayMs = 0) =>
-            context.store.providers.createModelPreset({
+            context.store.modelPreset.create({
                 name,
                 apiKeyId: null,
                 config: {
@@ -162,7 +160,7 @@ describe('server-side model chains', () => {
         const preB = createEcho('Parallel Pre B', 'PRE B', 160)
         const postA = createEcho('Parallel Post A', 'POST A', 160)
         const postB = createEcho('Parallel Post B', 'POST B', 160)
-        const chain = context.store.modelChains.create({
+        const chain = context.store.modelChain.create({
             name: 'Parallel review chain',
             description: 'Multiple concurrent agents',
             layers: [
@@ -183,7 +181,7 @@ describe('server-side model chains', () => {
                 },
             ],
         })
-        const conversation = context.store.conversations.createConversation({
+        const conversation = context.store.conversation.create({
             characterId: GENERAL_CHAT_CHARACTER_ID,
             modelPresetId: main.id,
             modelChainPresetId: chain.id,
@@ -194,7 +192,7 @@ describe('server-side model chains', () => {
         await runGeneration(context, conversation.id, 'parallel request')
         const elapsedMs = performance.now() - startedAt
 
-        expect(context.store.conversations.getLastAssistantMessage(conversation.id)?.content).toBe(
+        expect(context.store.message.lastAssistant(conversation.id)?.content).toBe(
             'MAIN\n\nPOST A\n\nPOST B',
         )
         expect(elapsedMs).toBeLessThan(520)
@@ -202,7 +200,7 @@ describe('server-side model chains', () => {
 
     test('persists free graphs, runs side branches and never calls disconnected models', async () => {
         const createEcho = (name: string, message: string) =>
-            context.store.providers.createModelPreset({
+            context.store.modelPreset.create({
                 name,
                 apiKeyId: null,
                 config: {
@@ -267,19 +265,19 @@ describe('server-side model chains', () => {
                 positions: { [id(orphan.id)]: { x: -120, y: 500 }, [main]: { x: 0, y: 0 } },
             },
         })
-        const chain = context.store.modelChains.create(input)
-        expect(context.store.modelChains.get(chain.id)?.graph).toEqual(input.graph)
-        const conversation = context.store.conversations.createConversation({
+        const chain = context.store.modelChain.create(input)
+        expect(context.store.modelChain.get(chain.id)?.graph).toEqual(input.graph)
+        const conversation = context.store.conversation.create({
             characterId: GENERAL_CHAT_CHARACTER_ID,
             modelPresetId: mainModel.id,
             modelChainPresetId: chain.id,
             greetingIndex: -1,
         })
-        context.store.settings.updateSettings({ requestDebugEnabled: true })
+        context.store.settings.update({ requestDebugEnabled: true })
         try {
             await runGeneration(context, conversation.id, 'graph request')
-            const records = context.store.generations
-                .listRequestDebugRecords()
+            const records = context.store.requestDebug
+                .list()
                 .filter((record) => record.conversationId === conversation.id)
             expect(records).toHaveLength(10)
             const requestFor = (agent: ModelChainAgent) =>
@@ -304,13 +302,13 @@ describe('server-side model chains', () => {
                         record.request.chain?.agentId === detached.id,
                 ),
             ).toBe(false)
-            expect(context.store.modelChains.getAgentMemory(conversation.id, orphan.id)).toBe('')
-            expect(
-                context.store.conversations.getLastAssistantMessage(conversation.id)?.content,
-            ).toBe('MAIN\n\nOUTPUT_PostA\n\nOUTPUT_PostB\n\nOUTPUT_PostC\n\nOUTPUT_PostJoin')
+            expect(context.store.modelChainMemory.get(conversation.id, orphan.id)).toBe('')
+            expect(context.store.message.lastAssistant(conversation.id)?.content).toBe(
+                'MAIN\n\nOUTPUT_PostA\n\nOUTPUT_PostB\n\nOUTPUT_PostC\n\nOUTPUT_PostJoin',
+            )
 
             // Explicitly clearing every edge must survive storage and execute only main.
-            const updated = context.store.modelChains.update(chain.id, {
+            const updated = context.store.modelChain.update(chain.id, {
                 ...input,
                 graph: { ...input.graph!, edges: [] },
             })!
@@ -318,21 +316,19 @@ describe('server-side model chains', () => {
             expect(updated.graph?.edges).toEqual([])
             expect(updated.graph?.positions).toEqual(input.graph?.positions)
             await runGeneration(context, conversation.id, 'disconnected request')
-            expect(
-                context.store.conversations.getLastAssistantMessage(conversation.id)?.content,
-            ).toBe('MAIN')
-            const after = context.store.generations
-                .listRequestDebugRecords()
+            expect(context.store.message.lastAssistant(conversation.id)?.content).toBe('MAIN')
+            const after = context.store.requestDebug
+                .list()
                 .filter((record) => record.conversationId === conversation.id)
             expect(after).toHaveLength(11)
         } finally {
-            context.store.settings.updateSettings({ requestDebugEnabled: false })
+            context.store.settings.update({ requestDebugEnabled: false })
         }
     })
 
     test('persists tagged pre-agent memory per conversation', async () => {
         const createEcho = (name: string, message: string) =>
-            context.store.providers.createModelPreset({
+            context.store.modelPreset.create({
                 name,
                 apiKeyId: null,
                 config: {
@@ -352,7 +348,7 @@ describe('server-side model chains', () => {
             memoryInstruction: 'Keep durable facts.',
             memoryFormat: '- fact',
         })
-        const chain = context.store.modelChains.create({
+        const chain = context.store.modelChain.create({
             name: 'Memory chain',
             description: 'Persistent agent memory',
             layers: [
@@ -364,7 +360,7 @@ describe('server-side model chains', () => {
                 },
             ],
         })
-        const conversation = context.store.conversations.createConversation({
+        const conversation = context.store.conversation.create({
             characterId: GENERAL_CHAT_CHARACTER_ID,
             modelPresetId: main.id,
             modelChainPresetId: chain.id,
@@ -373,7 +369,7 @@ describe('server-side model chains', () => {
 
         await runGeneration(context, conversation.id, 'remember')
 
-        expect(context.store.modelChains.getAgentMemory(conversation.id, agent.id)).toBe(
+        expect(context.store.modelChainMemory.get(conversation.id, agent.id)).toBe(
             'persistent state',
         )
     })

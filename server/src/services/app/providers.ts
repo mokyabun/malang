@@ -76,7 +76,7 @@ export class ProviderService {
     ) {}
 
     get(): ProviderSettings | null {
-        const config = this.store.providers.getProvider()
+        const config = this.store.provider.get()
         if (!config) return null
         const credentialType =
             config.credentialType ?? (config.provider === 'vertex' ? 'adc' : 'none')
@@ -92,16 +92,16 @@ export class ProviderService {
     }
 
     listModelPresets(): ModelPreset[] {
-        return this.store.providers.listModelPresets()
+        return this.store.modelPreset.list()
     }
 
     getModelPreset(id: string): ModelPreset | null {
-        return this.store.providers.getModelPreset(id)
+        return this.store.modelPreset.get(id)
     }
 
     listApiKeys(): ModelApiKey[] {
         const locked = this.vault.isLocked()
-        return this.store.providers.listModelApiKeyRows().map((row) => ({
+        return this.store.modelApiKey.list().map((row) => ({
             id: row.id,
             name: row.name,
             provider: ProviderKindSchema.parse(row.provider),
@@ -116,21 +116,21 @@ export class ProviderService {
 
     createModelPreset(input: ModelPresetInput): ModelPreset {
         this.validatePresetCredential(input)
-        return this.store.providers.createModelPreset(input)
+        return this.store.modelPreset.create(input)
     }
 
     updateModelPreset(id: string, input: ModelPresetInput): ModelPreset | null {
         this.validatePresetCredential(input)
-        return this.store.providers.updateModelPreset(id, input)
+        return this.store.modelPreset.update(id, input)
     }
 
     deleteModelPreset(id: string) {
-        return this.store.providers.deleteModelPreset(id)
+        return this.store.modelPreset.delete(id)
     }
 
     async createApiKey(input: ModelApiKeyInput): Promise<ModelApiKey> {
         const secret = credentialSecret(input)
-        const row = this.store.providers.createModelApiKeyRow({
+        const row = this.store.modelApiKey.create({
             name: input.name,
             provider: input.provider,
             credentialType: input.credentialType,
@@ -141,14 +141,14 @@ export class ProviderService {
             bundle.credentials[row.id] = secret
             await this.vault.set(JSON.stringify(bundle))
         } catch (error) {
-            this.store.providers.deleteModelApiKeyRow(row.id)
+            this.store.modelApiKey.delete(row.id)
             throw error
         }
         return this.listApiKeys().find((item) => item.id === row.id) as ModelApiKey
     }
 
     async updateApiKey(id: string, input: ModelApiKeyInput): Promise<ModelApiKey | null> {
-        const current = this.store.providers.getModelApiKeyRow(id)
+        const current = this.store.modelApiKey.get(id)
         if (!current) return null
         const changingKind =
             current.provider !== input.provider || current.credentialType !== input.credentialType
@@ -164,7 +164,7 @@ export class ProviderService {
             throw new ProviderConfigurationError('저장된 인증 정보를 찾을 수 없습니다.')
         }
         await this.vault.set(JSON.stringify(bundle))
-        const row = this.store.providers.updateModelApiKeyRow(id, {
+        const row = this.store.modelApiKey.update(id, {
             name: input.name,
             provider: input.provider,
             credentialType: input.credentialType,
@@ -175,7 +175,7 @@ export class ProviderService {
 
     async deleteApiKey(id: string) {
         const bundle = await this.readCredentialBundle()
-        const result = this.store.providers.deleteModelApiKeyRow(id)
+        const result = this.store.modelApiKey.delete(id)
         if (result !== 'deleted') return result
         delete bundle.credentials[id]
         if (Object.keys(bundle.credentials).length) await this.vault.set(JSON.stringify(bundle))
@@ -184,7 +184,7 @@ export class ProviderService {
     }
 
     async update(input: ProviderSettingsInput): Promise<ProviderSettings> {
-        const current = this.store.providers.getProvider()
+        const current = this.store.provider.get()
         let credentialType =
             input.credentialType ??
             (current?.provider === input.provider ? current.credentialType : undefined) ??
@@ -264,24 +264,22 @@ export class ProviderService {
         const config = providerConfig(input, credentialType, projectId)
         const runtime = await this.resolveConfig(config)
         providerFor(runtime).validateConfig(runtime)
-        this.store.providers.setProvider(config)
-        const migratedPreset = this.store.providers.getModelPreset(
-            '00000000-0000-4000-8000-000000000002',
-        )
+        this.store.provider.set(config)
+        const migratedPreset = this.store.modelPreset.get('00000000-0000-4000-8000-000000000002')
         if (migratedPreset) {
-            const legacyKey = this.store.providers.getModelApiKeyRow(LEGACY_CREDENTIAL_ID)
+            const legacyKey = this.store.modelApiKey.get(LEGACY_CREDENTIAL_ID)
             const usesStoredCredential = ['apiKey', 'serviceAccount', 'aws'].includes(
                 credentialType ?? '',
             )
             if (legacyKey && usesStoredCredential) {
-                this.store.providers.updateModelApiKeyRow(LEGACY_CREDENTIAL_ID, {
+                this.store.modelApiKey.update(LEGACY_CREDENTIAL_ID, {
                     name: legacyKey.name,
                     provider: config.provider,
                     credentialType: credentialType as 'apiKey' | 'serviceAccount' | 'aws',
                     hint: legacyKey.hint,
                 })
             }
-            this.store.providers.updateModelPreset(migratedPreset.id, {
+            this.store.modelPreset.update(migratedPreset.id, {
                 name: migratedPreset.name,
                 config,
                 apiKeyId: legacyKey && usesStoredCredential ? legacyKey.id : null,
@@ -291,7 +289,7 @@ export class ProviderService {
     }
 
     async requireRuntime(): Promise<RuntimeProviderConfig> {
-        const config = this.store.providers.getProvider()
+        const config = this.store.provider.get()
         if (!config) throw new ProviderConfigurationError('No provider is configured')
         return this.resolveConfig(config)
     }
@@ -300,9 +298,9 @@ export class ProviderService {
         conversationId: string,
         auxiliary = false,
     ): Promise<RuntimeProviderConfig> {
-        const conversation = this.store.conversations.getConversation(conversationId)
+        const conversation = this.store.conversation.get(conversationId)
         if (!conversation) throw new ProviderConfigurationError('Conversation not found')
-        const settings = this.store.settings.getSettings()
+        const settings = this.store.settings.get()
         const mainId = conversation.modelPresetId ?? settings.defaultModelPresetId
         const presetId = auxiliary
             ? (conversation.auxiliaryModelPresetId ??
@@ -315,36 +313,36 @@ export class ProviderService {
                 ? { ...legacy, modelId: legacy.auxiliaryModelId }
                 : legacy
         }
-        const preset = this.store.providers.getModelPreset(presetId)
+        const preset = this.store.modelPreset.get(presetId)
         if (!preset) throw new ProviderConfigurationError('Bound model preset does not exist')
         return this.resolvePreset(preset)
     }
 
     async requireRuntimeForModelPreset(id: string): Promise<RuntimeProviderConfig> {
-        const preset = this.store.providers.getModelPreset(id)
+        const preset = this.store.modelPreset.get(id)
         if (!preset) throw new ProviderConfigurationError('Model preset does not exist')
         return this.resolvePreset(preset)
     }
 
     configForConversation(conversationId: string): ProviderConfig | null {
-        const conversation = this.store.conversations.getConversation(conversationId)
+        const conversation = this.store.conversation.get(conversationId)
         if (!conversation) return null
-        const settings = this.store.settings.getSettings()
+        const settings = this.store.settings.get()
         const presetId = conversation.modelPresetId ?? settings.defaultModelPresetId
         return presetId
-            ? (this.store.providers.getModelPreset(presetId)?.config ?? null)
-            : this.store.providers.getProvider()
+            ? (this.store.modelPreset.get(presetId)?.config ?? null)
+            : this.store.provider.get()
     }
 
     async testModelPreset(id: string): Promise<{ ok: boolean; message: string }> {
-        const preset = this.store.providers.getModelPreset(id)
+        const preset = this.store.modelPreset.get(id)
         if (!preset) throw new ProviderConfigurationError('Model preset not found')
         const runtime = await this.resolvePreset(preset)
         return providerFor(runtime).healthCheck(runtime)
     }
 
     async listModelsForPreset(id: string) {
-        const preset = this.store.providers.getModelPreset(id)
+        const preset = this.store.modelPreset.get(id)
         if (!preset) throw new ProviderConfigurationError('Model preset not found')
         const runtime = await this.resolvePreset(preset)
         return providerFor(runtime).listModels(runtime)
@@ -376,7 +374,7 @@ export class ProviderService {
 
     private validatePresetCredential(input: ModelPresetInput): void {
         if (!input.apiKeyId) return
-        const key = this.store.providers.getModelApiKeyRow(input.apiKeyId)
+        const key = this.store.modelApiKey.get(input.apiKeyId)
         if (!key) throw new ProviderConfigurationError('API key does not exist')
         if (key.provider !== input.config.provider) {
             throw new ProviderConfigurationError('모델 프리셋과 API 키의 provider가 다릅니다.')
@@ -392,7 +390,7 @@ export class ProviderService {
         apiKeyId: string | null,
     ): Promise<RuntimeProviderConfig> {
         if (!apiKeyId) return config
-        const key = this.store.providers.getModelApiKeyRow(apiKeyId)
+        const key = this.store.modelApiKey.get(apiKeyId)
         if (!key) throw new ProviderConfigurationError('Bound API key does not exist')
         const bundle = await this.readCredentialBundle()
         const secret = bundle.credentials[apiKeyId]

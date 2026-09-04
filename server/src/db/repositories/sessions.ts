@@ -1,0 +1,28 @@
+import { and, eq, gt, lt } from 'drizzle-orm'
+
+import { sessions } from '../schema'
+import { RepositoryBase } from './base'
+
+export class SessionRepository extends RepositoryBase {
+    create(adminId: string, tokenHash: string, expiresAt: number): string {
+        const id = crypto.randomUUID()
+        this.db
+            .insert(sessions)
+            .values({ id, adminId, tokenHash, expiresAt, createdAt: Date.now() })
+            .run()
+        return id
+    }
+
+    get(tokenHash: string) {
+        this.db.delete(sessions).where(lt(sessions.expiresAt, Date.now())).run()
+        return this.db
+            .select({ id: sessions.id, adminId: sessions.adminId, expiresAt: sessions.expiresAt })
+            .from(sessions)
+            .where(and(eq(sessions.tokenHash, tokenHash), gt(sessions.expiresAt, Date.now())))
+            .get()
+    }
+
+    delete(tokenHash: string): void {
+        this.db.delete(sessions).where(eq(sessions.tokenHash, tokenHash)).run()
+    }
+}

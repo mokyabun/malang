@@ -63,7 +63,7 @@ export class GenerationService {
     }
 
     async start(conversationId: string, request: GenerationRequest, requestId: string) {
-        const prior = this.store.generations.findGenerationByIdempotency(
+        const prior = this.store.generation.findByIdempotency(
             conversationId,
             request.idempotencyKey,
         )
@@ -72,7 +72,7 @@ export class GenerationService {
                 return reconnectGeneration(this.store, prior.id, requestId)
             }
             if (request.clientInstanceId && prior.status === 'complete' && prior.messageId) {
-                const message = this.store.conversations.getMessage(prior.messageId)
+                const message = this.store.message.get(prior.messageId)
                 if (message) return replayGeneration(prior.id, message)
             }
             throw new GenerationConflictError(
@@ -81,12 +81,12 @@ export class GenerationService {
                     : 'This generation request already failed or was cancelled',
             )
         }
-        if (this.store.generations.findRunningGeneration(conversationId))
+        if (this.store.generation.findRunning(conversationId))
             throw new GenerationConflictError('A generation is already running')
         const providerConfig = await this.providers.requireRuntimeForConversation(conversationId)
         let context = this.context(conversationId)
         const modelChain = context.conversation.modelChainPresetId
-            ? this.store.modelChains.get(context.conversation.modelChainPresetId)
+            ? this.store.modelChain.get(context.conversation.modelChainPresetId)
             : null
         const clientInstanceId = request.clientInstanceId ?? crypto.randomUUID()
         const luaScriptSnapshot = this.lua.snapshotScripts(conversationId)
@@ -95,7 +95,7 @@ export class GenerationService {
             context.preset.parameters,
         )
         const generationId = crypto.randomUUID()
-        this.store.generations.createGeneration({
+        this.store.generation.create({
             id: generationId,
             conversationId,
             messageId: null,
@@ -105,10 +105,8 @@ export class GenerationService {
             parameters,
         })
         const targetMessage =
-            request.mode === 'regenerate'
-                ? this.store.conversations.getLastAssistantMessage(conversationId)
-                : null
-        let addedUserMessage: ReturnType<Store['conversations']['createMessage']> | null = null
+            request.mode === 'regenerate' ? this.store.message.lastAssistant(conversationId) : null
+        let addedUserMessage: ReturnType<Store['message']['create']> | null = null
         let compileMessages = context.messages
         let scripts = collectRegexScripts(context.preset, context.character, context.modules)
         let templateContext = regexTemplateContext(context)
@@ -143,7 +141,7 @@ export class GenerationService {
                     scripts,
                     templateContext,
                 })
-                addedUserMessage = this.store.conversations.createMessage(
+                addedUserMessage = this.store.message.create(
                     conversationId,
                     'user',
                     processedInput.text,
@@ -219,9 +217,9 @@ export class GenerationService {
                 }
             }
         } catch (error) {
-            if (addedUserMessage) this.store.conversations.deleteMessage(addedUserMessage.id)
+            if (addedUserMessage) this.store.message.delete(addedUserMessage.id)
             const normalized = normalizeError(error, requestId)
-            this.store.generations.finishGeneration(generationId, {
+            this.store.generation.finish(generationId, {
                 status: 'failed',
                 errorCode: normalized.apiError.code,
                 errorMessage: normalized.apiError.message,
@@ -230,14 +228,14 @@ export class GenerationService {
         }
 
         const streamingMessage = targetMessage
-            ? this.store.conversations.updateMessage(targetMessage.id, {
+            ? this.store.message.update(targetMessage.id, {
                   content: '',
                   status: 'streaming',
               })
-            : this.store.conversations.createMessage(conversationId, 'assistant', '', 'streaming')
+            : this.store.message.create(conversationId, 'assistant', '', 'streaming')
         if (!streamingMessage) throw new Error('Failed to create assistant message')
         const messageId = streamingMessage.id
-        this.store.generations.attachGenerationMessage(generationId, messageId)
+        this.store.generation.attachMessage(generationId, messageId)
         const abortController = new AbortController()
         this.active.set(generationId, abortController)
         const startedAt = performance.now()
@@ -268,11 +266,11 @@ export class GenerationService {
                 let usage: ProviderUsage | undefined
                 try {
                     if (stoppedBeforeProvider) {
-                        const stopped = this.store.conversations.updateMessage(messageId, {
+                        const stopped = this.store.message.update(messageId, {
                             content: '',
                             status: 'cancelled',
                         })
-                        this.store.generations.finishGeneration(generationId, {
+                        this.store.generation.finish(generationId, {
                             status: 'cancelled',
                             outputText: '',
                             processedOutputText: '',
@@ -296,7 +294,7 @@ export class GenerationService {
                                 ? {
                                       onRequest: (snapshot) => {
                                           try {
-                                              this.store.generations.createRequestDebugRecord({
+                                              this.store.requestDebug.create({
                                                   generationId,
                                                   conversationId,
                                                   provider: providerConfig.provider,
@@ -328,7 +326,7 @@ export class GenerationService {
                                 content.length - checkpointLength >= 512 ||
                                 Date.now() - checkpointAt >= 1_000
                             ) {
-                                this.store.conversations.updateMessage(messageId, {
+                                this.store.message.update(messageId, {
                                     content,
                                     status: 'streaming',
                                 })
@@ -366,7 +364,7 @@ export class GenerationService {
                             templateContext,
                         })
                     ).text
-                    let completed = this.store.conversations.updateMessage(messageId, {
+                    let completed = this.store.message.update(messageId, {
                         content: processedContent,
                         status: 'complete',
                     })
@@ -381,12 +379,12 @@ export class GenerationService {
                         scriptSnapshot: luaScriptSnapshot,
                     })
                     completed =
-                        this.store.conversations.getMessage(messageId) ??
-                        this.store.conversations.getLastAssistantMessage(conversationId)
+                        this.store.message.get(messageId) ??
+                        this.store.message.lastAssistant(conversationId)
                     if (!completed) throw new Error('Lua onOutput removed the assistant message')
                     processedContent = completed.content
-                    this.store.generations.attachGenerationMessage(generationId, completed.id)
-                    this.store.generations.finishGeneration(generationId, {
+                    this.store.generation.attachMessage(generationId, completed.id)
+                    this.store.generation.finish(generationId, {
                         status: 'complete',
                         outputText: content,
                         processedOutputText: processedContent,
@@ -411,13 +409,13 @@ export class GenerationService {
                     close()
                 } catch (error) {
                     const cancelled = abortController.signal.aborted
-                    this.store.conversations.updateMessage(messageId, {
+                    this.store.message.update(messageId, {
                         content: processedContent || content,
                         status: cancelled ? 'cancelled' : 'failed',
                     })
                     const normalized = normalizeError(error, requestId, { cancelled })
                     const apiError = normalized.apiError
-                    this.store.generations.finishGeneration(generationId, {
+                    this.store.generation.finish(generationId, {
                         status: cancelled ? 'cancelled' : 'failed',
                         outputText: content,
                         processedOutputText: processedContent || content,
@@ -526,7 +524,7 @@ export class GenerationService {
                         : undefined
                     try {
                         const memory = agent.memoryEnabled
-                            ? this.store.modelChains.getAgentMemory(input.conversationId, agent.id)
+                            ? this.store.modelChainMemory.get(input.conversationId, agent.id)
                             : ''
                         const raw = await this.completeChainAgent(
                             agent,
@@ -548,7 +546,7 @@ export class GenerationService {
                         input.signal.throwIfAborted()
                         const result = parseAgentMemoryOutput(raw, agent.memoryEnabled)
                         if (agent.memoryEnabled && result.memoryUpdate) {
-                            this.store.modelChains.setAgentMemory(
+                            this.store.modelChainMemory.set(
                                 input.conversationId,
                                 agent.id,
                                 result.memoryUpdate,
@@ -629,7 +627,7 @@ export class GenerationService {
         request: RequestDebugSnapshot,
     ) {
         try {
-            this.store.generations.createRequestDebugRecord({
+            this.store.requestDebug.create({
                 generationId,
                 conversationId,
                 provider: runtime.provider,
@@ -696,8 +694,7 @@ export class GenerationService {
                     ...context,
                     messages: context.messages.slice(0, index + 1),
                     conversation:
-                        this.store.conversations.getConversation(conversationId) ??
-                        context.conversation,
+                        this.store.conversation.get(conversationId) ?? context.conversation,
                 }
                 const templateContext = regexTemplateContext(perMessageContext)
                 const regex = await processRegexText({
@@ -770,28 +767,26 @@ export class GenerationService {
     }
 
     private context(conversationId: string) {
-        const conversation = this.store.conversations.getConversation(conversationId)
+        const conversation = this.store.conversation.get(conversationId)
         if (!conversation) throw new Error('Conversation not found')
-        const character = this.store.characters.getCharacter(conversation.characterId)
+        const character = this.store.character.get(conversation.characterId)
         if (!character) throw new Error('Character not found')
-        const settings = this.store.settings.getSettings()
-        const preset = this.store.prompts.getPromptPreset(
-            this.store.conversations.effectivePromptPresetId(conversation),
+        const settings = this.store.settings.get()
+        const preset = this.store.promptPreset.get(
+            this.store.conversation.effectivePromptPresetId(conversation),
         )
         if (!preset) throw new Error('Prompt preset not found')
-        const moduleStates = this.store.conversations
-            .listConversationModuleStates(conversationId)
+        const moduleStates = this.store.conversationModule
+            .list(conversationId)
             .filter((state) => state.enabled)
-        const characterAssets = this.store.characters
-            .getCharacterAssetLinks(character.id)
-            .map((link) => ({
-                name: link.name,
-                type: link.type,
-                extension: link.extension,
-                url: `/api/v1/assets/${link.assetId}`,
-            }))
+        const characterAssets = this.store.characterAsset.list(character.id).map((link) => ({
+            name: link.name,
+            type: link.type,
+            extension: link.extension,
+            url: `/api/v1/assets/${link.assetId}`,
+        }))
         const moduleAssets = moduleStates.flatMap((state) =>
-            this.store.prompts.getPromptModuleAssetLinks(state.module.id).map((link) => ({
+            this.store.promptModuleAsset.list(state.module.id).map((link) => ({
                 name: link.name,
                 type: link.type,
                 extension: link.extension,
@@ -803,9 +798,9 @@ export class GenerationService {
             conversation,
             character,
             preset,
-            messages: this.store.conversations.listMessages(conversationId),
+            messages: this.store.message.list(conversationId),
             settings,
-            modelId: this.store.providers.getProvider()?.modelId,
+            modelId: this.store.provider.get()?.modelId,
             persona: this.personas.effectiveFor(conversation, settings),
             modules: moduleStates.map((state) => state.module),
             assets: [...characterAssets, ...moduleAssets],
@@ -1075,7 +1070,7 @@ function normalizeCompiledRole(role: string): 'system' | 'user' | 'assistant' {
 
 function replayGeneration(
     generationId: string,
-    message: NonNullable<ReturnType<Store['conversations']['getMessage']>>,
+    message: NonNullable<ReturnType<Store['message']['get']>>,
 ) {
     const stream = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -1096,10 +1091,10 @@ function reconnectGeneration(store: Store, generationId: string, requestId: stri
             let started = false
             let lastContent = ''
             while (!cancelled) {
-                const run = store.generations.getGeneration(generationId)
+                const run = store.generation.get(generationId)
                 if (!run) break
                 if (run.messageId) {
-                    const message = store.conversations.getMessage(run.messageId)
+                    const message = store.message.get(run.messageId)
                     if (!started) {
                         controller.enqueue(
                             encodeSse({

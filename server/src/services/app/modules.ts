@@ -24,27 +24,27 @@ export class PromptModuleService {
     ) {}
 
     list() {
-        return this.store.prompts.listPromptModules().map((module) => this.withAssets(module))
+        return this.store.promptModule.list().map((module) => this.withAssets(module))
     }
 
     get(id: string) {
-        const module = this.store.prompts.getPromptModule(id)
+        const module = this.store.promptModule.get(id)
         return module ? this.withAssets(module) : null
     }
 
     create(input: PromptModuleInput) {
         this.assertNamespaceAvailable(input.namespace)
-        return this.withAssets(this.store.prompts.createPromptModule(input))
+        return this.withAssets(this.store.promptModule.create(input))
     }
 
     update(id: string, input: PromptModuleInput) {
         this.assertNamespaceAvailable(input.namespace, id)
-        const module = this.store.prompts.updatePromptModule(id, input)
+        const module = this.store.promptModule.update(id, input)
         return module ? this.withAssets(module) : null
     }
 
     delete(id: string) {
-        return this.store.prompts.deletePromptModule(id)
+        return this.store.promptModule.delete(id)
     }
 
     async import(bytes: Uint8Array, filename: string) {
@@ -52,7 +52,7 @@ export class PromptModuleService {
             ? this.importCharx(bytes, filename)
             : importPromptModule(bytes, filename)
         this.assertNamespaceAvailable(decoded.input.namespace)
-        const module = this.store.prompts.createPromptModule(
+        const module = this.store.promptModule.create(
             decoded.input,
             decoded.source,
             decoded.warnings,
@@ -70,14 +70,14 @@ export class PromptModuleService {
                 sourceUri: imported.sourceUri,
             })
         }
-        this.store.prompts.setPromptModuleAssets(module.id, links)
+        this.store.promptModuleAsset.replace(module.id, links)
         return this.withAssets(module)
     }
 
     async export(id: string, format: 'json' | 'risum' | 'charx') {
-        const module = this.store.prompts.getPromptModule(id)
+        const module = this.store.promptModule.get(id)
         if (!module) return null
-        const source = this.store.prompts.getPromptModuleSource(id)
+        const source = this.store.promptModule.source(id)
         const input = {
             name: module.name,
             description: module.description,
@@ -94,8 +94,8 @@ export class PromptModuleService {
             lorebook: module.lorebook,
         }
         const moduleAssets = await Promise.all(
-            this.store.prompts.getPromptModuleAssetLinks(id).map(async (link) => {
-                const asset = this.store.assets.getAsset(link.assetId)
+            this.store.promptModuleAsset.list(id).map(async (link) => {
+                const asset = this.store.asset.get(link.assetId)
                 const bytes = await this.assetStore.read(link.assetId)
                 return asset && bytes
                     ? {
@@ -120,35 +120,32 @@ export class PromptModuleService {
     }
 
     conversationStates(conversationId: string) {
-        return this.store.conversations
-            .listConversationModuleStates(conversationId)
-            .map((state) => ({
-                ...state,
-                module: this.withAssets(state.module),
-            }))
+        return this.store.conversationModule.list(conversationId).map((state) => ({
+            ...state,
+            module: this.withAssets(state.module),
+        }))
     }
 
     setConversationState(conversationId: string, moduleId: string, enabled: boolean | null) {
-        if (!this.store.prompts.getPromptModule(moduleId)) return false
-        if (enabled === null)
-            this.store.conversations.resetConversationModule(conversationId, moduleId)
-        else this.store.conversations.setConversationModule(conversationId, moduleId, enabled)
+        if (!this.store.promptModule.get(moduleId)) return false
+        if (enabled === null) this.store.conversationModule.reset(conversationId, moduleId)
+        else this.store.conversationModule.set(conversationId, moduleId, enabled)
         return true
     }
 
     private assertNamespaceAvailable(namespace: string, excludingId?: string) {
         if (!namespace) return
-        const existing = this.store.prompts.findPromptModuleByNamespace(namespace)
+        const existing = this.store.promptModule.findByNamespace(namespace)
         if (existing && existing.id !== excludingId) {
             throw new PromptModuleConflictError(`Module namespace ${namespace} is already in use`)
         }
     }
 
-    private withAssets(module: NonNullable<ReturnType<Store['prompts']['getPromptModule']>>) {
+    private withAssets(module: NonNullable<ReturnType<Store['promptModule']['get']>>) {
         return {
             ...module,
-            assets: this.store.prompts.getPromptModuleAssetLinks(module.id).flatMap((link) => {
-                const asset = this.store.assets.getAsset(link.assetId)
+            assets: this.store.promptModuleAsset.list(module.id).flatMap((link) => {
+                const asset = this.store.asset.get(link.assetId)
                 return asset
                     ? [
                           {

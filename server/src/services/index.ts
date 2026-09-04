@@ -41,10 +41,10 @@ export interface AppContext {
 
 export async function createContext(config: AppConfig = loadConfig()): Promise<AppContext> {
     const store = new Store(openDatabase(config.databasePath))
-    store.generations.recoverInterruptedGenerations()
-    store.settings.ensureSettings()
-    store.prompts.ensureDefaultPrompt()
-    store.characters.ensureGeneralChatCharacter()
+    store.generation.recoverInterrupted()
+    store.settings.ensure()
+    store.promptPreset.ensureDefault()
+    store.character.ensureGeneralChat()
     const vault = new SecretVault(store)
     const auth = new AuthService(store, config.sessionSecret, vault)
     await auth.bootstrap(config.adminPassword)

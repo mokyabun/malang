@@ -12,7 +12,7 @@ export interface AssetRecord {
 }
 
 export class AssetRepository extends RepositoryBase {
-    upsertAsset(asset: AssetRecord): AssetRecord {
+    upsert(asset: AssetRecord): AssetRecord {
         const existing = this.db.select().from(assets).where(eq(assets.sha256, asset.sha256)).get()
         if (existing) return existing
         this.db
@@ -22,11 +22,11 @@ export class AssetRepository extends RepositoryBase {
         return asset
     }
 
-    findAssetBySha256(sha256: string): AssetRecord | null {
+    findBySha256(sha256: string): AssetRecord | null {
         return this.db.select().from(assets).where(eq(assets.sha256, sha256)).get() || null
     }
 
-    getAsset(id: string): AssetRecord | null {
+    get(id: string): AssetRecord | null {
         return this.db.select().from(assets).where(eq(assets.id, id)).get() || null
     }
 }

@@ -1,20 +1,20 @@
-import type { GenerationParameters, Message, RequestDebugSnapshot } from '@malang/shared'
-import { and, asc, desc, eq } from 'drizzle-orm'
+import type { GenerationParameters, Message } from '@malang/shared'
+import { and, asc, eq } from 'drizzle-orm'
 
 import type { DatabaseHandle } from '../db'
-import { generationRuns, requestDebugRecords } from '../schema'
+import { generationRuns } from '../schema'
 import { iso, RepositoryBase } from './base'
-import { ConversationRepository } from './conversations'
+import { MessageRepository } from './messages'
 
 export class GenerationRepository extends RepositoryBase {
     constructor(
         handle: DatabaseHandle,
-        private readonly conversations: ConversationRepository,
+        private readonly message: MessageRepository,
     ) {
         super(handle)
     }
 
-    recoverInterruptedGenerations(): void {
+    recoverInterrupted(): void {
         const now = Date.now()
         this.sqlite.transaction(() => {
             this.sqlite
@@ -36,7 +36,7 @@ export class GenerationRepository extends RepositoryBase {
         })()
     }
 
-    findRunningGeneration(conversationId: string) {
+    findRunning(conversationId: string) {
         return this.db
             .select()
             .from(generationRuns)
@@ -49,12 +49,12 @@ export class GenerationRepository extends RepositoryBase {
             .get()
     }
 
-    getActiveGeneration(conversationId: string) {
-        const row = this.findRunningGeneration(conversationId)
+    active(conversationId: string) {
+        const row = this.findRunning(conversationId)
         return row ? mapGenerationRun(row) : null
     }
 
-    findGenerationByIdempotency(conversationId: string, key: string) {
+    findByIdempotency(conversationId: string, key: string) {
         return this.db
             .select()
             .from(generationRuns)
@@ -67,7 +67,7 @@ export class GenerationRepository extends RepositoryBase {
             .get()
     }
 
-    createGeneration(input: {
+    create(input: {
         id: string
         conversationId: string
         messageId: string | null
@@ -89,11 +89,11 @@ export class GenerationRepository extends RepositoryBase {
             .run()
     }
 
-    attachGenerationMessage(id: string, messageId: string): void {
+    attachMessage(id: string, messageId: string): void {
         this.db.update(generationRuns).set({ messageId }).where(eq(generationRuns.id, id)).run()
     }
 
-    finishGeneration(
+    finish(
         id: string,
         update: {
             status: 'complete' | 'cancelled' | 'failed'
@@ -112,59 +112,11 @@ export class GenerationRepository extends RepositoryBase {
             .run()
     }
 
-    getGeneration(id: string) {
+    get(id: string) {
         return this.db.select().from(generationRuns).where(eq(generationRuns.id, id)).get()
     }
 
-    createRequestDebugRecord(input: {
-        generationId: string
-        conversationId: string
-        provider: string
-        modelId: string
-        parameters: GenerationParameters
-        request: RequestDebugSnapshot
-    }) {
-        const row = {
-            id: crypto.randomUUID(),
-            generationId: input.generationId,
-            conversationId: input.conversationId,
-            provider: input.provider,
-            modelId: input.modelId,
-            parametersJson: input.parameters,
-            requestJson: input.request,
-            createdAt: Date.now(),
-        }
-        this.db.insert(requestDebugRecords).values(row).run()
-        this.sqlite
-            .query(
-                `DELETE FROM request_debug_records
-                     WHERE id NOT IN (
-                         SELECT id FROM request_debug_records ORDER BY created_at DESC LIMIT 100
-                     )`,
-            )
-            .run()
-        return mapRequestDebugRecord(row)
-    }
-
-    listRequestDebugRecords(limit = 100) {
-        return this.db
-            .select()
-            .from(requestDebugRecords)
-            .orderBy(desc(requestDebugRecords.createdAt))
-            .limit(Math.max(1, Math.min(limit, 100)))
-            .all()
-            .map(mapRequestDebugRecord)
-    }
-
-    clearRequestDebugRecords(): number {
-        const count = this.sqlite
-            .query<{ count: number }, []>('SELECT COUNT(*) AS count FROM request_debug_records')
-            .get()?.count
-        this.db.delete(requestDebugRecords).run()
-        return count || 0
-    }
-
-    listMessageGenerations(messageId: string) {
+    listByMessage(messageId: string) {
         return this.db
             .select()
             .from(generationRuns)
@@ -174,7 +126,7 @@ export class GenerationRepository extends RepositoryBase {
             .map(mapGenerationRun)
     }
 
-    selectGenerationOutput(messageId: string, generationId: string): Message | null {
+    selectOutput(messageId: string, generationId: string): Message | null {
         const run = this.db
             .select()
             .from(generationRuns)
@@ -183,7 +135,7 @@ export class GenerationRepository extends RepositoryBase {
             )
             .get()
         if (!run || run.status !== 'complete') return null
-        return this.conversations.updateMessage(messageId, {
+        return this.message.update(messageId, {
             content: run.processedOutputText || run.outputText,
             status: 'complete',
         })
@@ -207,18 +159,5 @@ function mapGenerationRun(row: typeof generationRuns.$inferSelect) {
         errorMessage: row.errorMessage,
         startedAt: iso(row.startedAt),
         completedAt: iso(row.completedAt),
-    }
-}
-
-function mapRequestDebugRecord(row: typeof requestDebugRecords.$inferSelect) {
-    return {
-        id: row.id,
-        generationId: row.generationId,
-        conversationId: row.conversationId,
-        provider: row.provider,
-        modelId: row.modelId,
-        parameters: row.parametersJson,
-        request: row.requestJson,
-        createdAt: iso(row.createdAt),
     }
 }

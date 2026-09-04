@@ -49,10 +49,7 @@ export class BackupService {
         let temporary: string | undefined
         let staging: string | undefined
         try {
-            if (
-                !this.config.autoBackupEnabled ||
-                !this.store.settings.getSettings().autoBackupEnabled
-            )
+            if (!this.config.autoBackupEnabled || !this.store.settings.get().autoBackupEnabled)
                 return
             // total_changes sees this connection's writes; data_version sees other connections.
             const revision = JSON.stringify([

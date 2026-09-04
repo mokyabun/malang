@@ -18,42 +18,42 @@ export class PersonaService {
     ) {}
 
     list() {
-        return this.store.personas.listPersonas()
+        return this.store.persona.list()
     }
 
     get(id: string) {
-        return this.store.personas.getPersona(id)
+        return this.store.persona.get(id)
     }
 
     create(input: PersonaCreate) {
-        return this.store.personas.createPersona(input)
+        return this.store.persona.create(input)
     }
 
     update(id: string, input: PersonaUpdate) {
-        return this.store.personas.updatePersona(id, input)
+        return this.store.persona.update(id, input)
     }
 
     delete(id: string) {
-        return this.store.personas.deletePersona(id)
+        return this.store.persona.delete(id)
     }
 
     async setAvatar(id: string, bytes: Uint8Array, mimeType: string) {
         if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mimeType)) {
             throw new ValidationError('Avatar must be a PNG, JPEG, WebP, or GIF image')
         }
-        if (!this.store.personas.getPersona(id)) return null
+        if (!this.store.persona.get(id)) return null
         const asset = await this.assetStore.put(bytes, mimeType)
-        return this.store.personas.setPersonaAvatar(id, asset.id)
+        return this.store.persona.setAvatar(id, asset.id)
     }
 
     removeAvatar(id: string) {
-        return this.store.personas.setPersonaAvatar(id, null)
+        return this.store.persona.setAvatar(id, null)
     }
 
     effectiveFor(conversation: Conversation | null, settings: AppSettings): EffectivePersona {
         if (conversation?.personaLocked) {
             const selected = conversation.boundPersonaId
-                ? this.store.personas.getPersona(conversation.boundPersonaId)
+                ? this.store.persona.get(conversation.boundPersonaId)
                 : null
             if (selected) {
                 return {
@@ -73,7 +73,7 @@ export class PersonaService {
             }
         }
         if (settings.selectedPersonaId) {
-            const selected = this.store.personas.getPersona(settings.selectedPersonaId)
+            const selected = this.store.persona.get(settings.selectedPersonaId)
             if (selected) {
                 return {
                     id: selected.id,

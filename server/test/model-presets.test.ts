@@ -280,7 +280,7 @@ describe('model presets, API keys, and conversation bindings', () => {
             await context.providers.requireRuntimeForConversation(conversation.id, true),
         ).toMatchObject({ modelId: 'gpt-primary' })
 
-        const encrypted = context.store.providers.getSecretStorage().providerSecret!
+        const encrypted = context.store.secretStorage.get().providerSecret!
         expect(encrypted).toContain('AES-256-GCM')
         expect(encrypted).not.toContain(plaintext)
         expect(

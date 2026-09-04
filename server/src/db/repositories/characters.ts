@@ -1,22 +1,9 @@
-import type {
-    Character,
-    CharacterGroup,
-    CharacterOrganization,
-    CharacterUpdate,
-    LoreEntry,
-    LuaScriptInput,
-} from '@malang/shared'
+import type { Character, CharacterUpdate, LoreEntry, LuaScriptInput } from '@malang/shared'
 import { GENERAL_CHAT_CHARACTER_ID } from '@malang/shared'
-import { asc, desc, eq, isNull, max } from 'drizzle-orm'
+import { asc, desc, eq, isNull } from 'drizzle-orm'
 
 import type { DatabaseHandle } from '../db'
-import {
-    characterAssets,
-    characterGroups,
-    characterLoreEntries,
-    characters,
-    conversations,
-} from '../schema'
+import { characterAssets, characterLoreEntries, characters, conversations } from '../schema'
 import {
     iso,
     mapLuaScript,
@@ -25,7 +12,7 @@ import {
     requireValue,
     updateLuaColumns,
 } from './base'
-import { PromptRepository } from './prompts'
+import { CharacterOrganizationRepository } from './character-organization'
 
 export interface CharacterRecord extends Character {
     sourceExtensions: Record<string, unknown>
@@ -76,25 +63,13 @@ export interface CharacterAssetRecord {
 export class CharacterRepository extends RepositoryBase {
     constructor(
         handle: DatabaseHandle,
-        private readonly prompts: PromptRepository,
+        private readonly organization: CharacterOrganizationRepository,
     ) {
         super(handle)
     }
 
-    getCharacterLoreExtensions(characterId: string): Map<string, Record<string, unknown>> {
-        const rows = this.db
-            .select({
-                id: characterLoreEntries.id,
-                extensionsJson: characterLoreEntries.extensionsJson,
-            })
-            .from(characterLoreEntries)
-            .where(eq(characterLoreEntries.characterId, characterId))
-            .all()
-        return new Map(rows.map((row) => [row.id, row.extensionsJson]))
-    }
-
-    ensureGeneralChatCharacter(): CharacterRecord {
-        const existing = this.getCharacter(GENERAL_CHAT_CHARACTER_ID)
+    ensureGeneralChat(): CharacterRecord {
+        const existing = this.get(GENERAL_CHAT_CHARACTER_ID)
         if (existing) {
             if (existing.archivedAt) {
                 this.db
@@ -103,7 +78,7 @@ export class CharacterRepository extends RepositoryBase {
                     .where(eq(characters.id, GENERAL_CHAT_CHARACTER_ID))
                     .run()
                 return requireValue(
-                    this.getCharacter(GENERAL_CHAT_CHARACTER_ID),
+                    this.get(GENERAL_CHAT_CHARACTER_ID),
                     'Failed to restore the built-in Chat character',
                 )
             }
@@ -112,7 +87,7 @@ export class CharacterRepository extends RepositoryBase {
 
         const systemPrompt =
             'You are Chat, a helpful general-purpose AI assistant. Respond directly and clearly to the user. Do not role-play a fictional character unless the user asks you to.'
-        return this.createCharacter(
+        return this.create(
             {
                 id: GENERAL_CHAT_CHARACTER_ID,
                 name: 'Chat',
@@ -161,12 +136,9 @@ export class CharacterRepository extends RepositoryBase {
         )
     }
 
-    createCharacter(
-        input: NewCharacterRecord,
-        linkedAssets: CharacterAssetRecord[],
-    ): CharacterRecord {
+    create(input: NewCharacterRecord, linkedAssets: CharacterAssetRecord[]): CharacterRecord {
         const now = Date.now()
-        const sortOrder = this.nextCharacterRootOrder()
+        const sortOrder = this.organization.nextRootOrder()
         this.db.transaction((tx) => {
             tx.insert(characters)
                 .values({
@@ -224,10 +196,10 @@ export class CharacterRepository extends RepositoryBase {
             }
             if (linkedAssets.length) tx.insert(characterAssets).values(linkedAssets).run()
         })
-        return requireValue(this.getCharacter(input.id), 'Failed to create character')
+        return requireValue(this.get(input.id), 'Failed to create character')
     }
 
-    listCharacters(includeArchived = false): CharacterRecord[] {
+    list(includeArchived = false): CharacterRecord[] {
         const query = this.db
             .select()
             .from(characters)
@@ -238,107 +210,14 @@ export class CharacterRepository extends RepositoryBase {
         return rows.map((row) => this.mapCharacter(row, false))
     }
 
-    listCharacterGroups(): CharacterGroup[] {
-        return this.db
-            .select()
-            .from(characterGroups)
-            .orderBy(asc(characterGroups.sortOrder), asc(characterGroups.createdAt))
-            .all()
-            .map(mapCharacterGroup)
-    }
-
-    createCharacterGroup(name: string): CharacterGroup {
-        const now = Date.now()
-        const id = crypto.randomUUID()
-        this.db
-            .insert(characterGroups)
-            .values({
-                id,
-                name,
-                sortOrder: this.nextCharacterRootOrder(),
-                createdAt: now,
-                updatedAt: now,
-            })
-            .run()
-        return requireValue(
-            this.listCharacterGroups().find((group) => group.id === id),
-            'Failed to create character group',
-        )
-    }
-
-    updateCharacterGroup(id: string, name: string): CharacterGroup | null {
-        const existing = this.db
-            .select()
-            .from(characterGroups)
-            .where(eq(characterGroups.id, id))
-            .get()
-        if (!existing) return null
-        this.db
-            .update(characterGroups)
-            .set({ name, updatedAt: Date.now() })
-            .where(eq(characterGroups.id, id))
-            .run()
-        return this.listCharacterGroups().find((group) => group.id === id) ?? null
-    }
-
-    deleteCharacterGroup(id: string): boolean {
-        const existing = this.db
-            .select({ id: characterGroups.id })
-            .from(characterGroups)
-            .where(eq(characterGroups.id, id))
-            .get()
-        if (!existing) return false
-        this.db.delete(characterGroups).where(eq(characterGroups.id, id)).run()
-        return true
-    }
-
-    organizeCharacters(input: CharacterOrganization): boolean {
-        const groupIds = new Set(this.listCharacterGroups().map((group) => group.id))
-        const characterRows = this.db.select({ id: characters.id }).from(characters).all()
-        const characterIds = new Set(characterRows.map((character) => character.id))
-        if (
-            input.groups.some((group) => !groupIds.has(group.id)) ||
-            input.characters.some(
-                (character) =>
-                    character.id === GENERAL_CHAT_CHARACTER_ID ||
-                    !characterIds.has(character.id) ||
-                    (character.groupId !== null && !groupIds.has(character.groupId)),
-            )
-        ) {
-            return false
-        }
-
-        const now = Date.now()
-        this.sqlite.transaction(() => {
-            for (const group of input.groups) {
-                this.db
-                    .update(characterGroups)
-                    .set({ sortOrder: group.sortOrder, updatedAt: now })
-                    .where(eq(characterGroups.id, group.id))
-                    .run()
-            }
-            for (const character of input.characters) {
-                this.db
-                    .update(characters)
-                    .set({
-                        groupId: character.groupId,
-                        sortOrder: character.sortOrder,
-                    })
-                    .where(eq(characters.id, character.id))
-                    .run()
-            }
-        })()
-        return true
-    }
-
-    getCharacter(id: string): CharacterRecord | null {
+    get(id: string): CharacterRecord | null {
         const row = this.db.select().from(characters).where(eq(characters.id, id)).get()
         return row ? this.mapCharacter(row, true) : null
     }
 
-    updateCharacter(id: string, update: CharacterUpdate): CharacterRecord | null {
+    update(id: string, update: CharacterUpdate): CharacterRecord | null {
         if (id === GENERAL_CHAT_CHARACTER_ID) return null
-        const current = this.getCharacter(id)
+        const current = this.get(id)
         if (!current) return null
         const patch: Partial<typeof characters.$inferInsert> = { updatedAt: Date.now() }
         if (update.name !== undefined) patch.name = update.name
@@ -409,12 +288,12 @@ export class CharacterRepository extends RepositoryBase {
                 }
             }
         })()
-        return this.getCharacter(id)
+        return this.get(id)
     }
 
-    archiveCharacter(id: string): boolean {
+    archive(id: string): boolean {
         if (id === GENERAL_CHAT_CHARACTER_ID) return false
-        if (!this.getCharacter(id)) return false
+        if (!this.get(id)) return false
         this.db
             .update(characters)
             .set({ archivedAt: Date.now(), updatedAt: Date.now() })
@@ -423,9 +302,9 @@ export class CharacterRepository extends RepositoryBase {
         return true
     }
 
-    deleteCharacter(id: string): boolean {
+    delete(id: string): boolean {
         if (id === GENERAL_CHAT_CHARACTER_ID) return false
-        if (!this.getCharacter(id)) return false
+        if (!this.get(id)) return false
         this.db.transaction((tx) => {
             tx.delete(conversations).where(eq(conversations.characterId, id)).run()
             tx.delete(characters).where(eq(characters.id, id)).run()
@@ -433,8 +312,8 @@ export class CharacterRepository extends RepositoryBase {
         return true
     }
 
-    restoreCharacter(id: string): boolean {
-        const character = this.getCharacter(id)
+    restore(id: string): boolean {
+        const character = this.get(id)
         if (!character) return false
         this.db
             .update(characters)
@@ -444,23 +323,15 @@ export class CharacterRepository extends RepositoryBase {
         return true
     }
 
-    setCharacterAvatar(id: string, assetId: string | null): CharacterRecord | null {
+    setAvatar(id: string, assetId: string | null): CharacterRecord | null {
         if (id === GENERAL_CHAT_CHARACTER_ID) return null
-        if (!this.getCharacter(id)) return null
+        if (!this.get(id)) return null
         this.db
             .update(characters)
             .set({ avatarAssetId: assetId, updatedAt: Date.now() })
             .where(eq(characters.id, id))
             .run()
-        return this.getCharacter(id)
-    }
-
-    getCharacterAssetLinks(characterId: string) {
-        return this.db
-            .select()
-            .from(characterAssets)
-            .where(eq(characterAssets.characterId, characterId))
-            .all()
+        return this.get(id)
     }
 
     private mapCharacter(
@@ -524,29 +395,6 @@ export class CharacterRepository extends RepositoryBase {
             createdAt: iso(row.createdAt),
             updatedAt: iso(row.updatedAt),
         }
-    }
-
-    private nextCharacterRootOrder(): number {
-        const itemMax = this.db
-            .select({ value: max(characters.sortOrder) })
-            .from(characters)
-            .where(isNull(characters.groupId))
-            .get()?.value
-        const groupMax = this.db
-            .select({ value: max(characterGroups.sortOrder) })
-            .from(characterGroups)
-            .get()?.value
-        return Math.max(itemMax ?? -1, groupMax ?? -1) + 1
-    }
-}
-
-function mapCharacterGroup(row: typeof characterGroups.$inferSelect): CharacterGroup {
-    return {
-        id: row.id,
-        name: row.name,
-        sortOrder: row.sortOrder,
-        createdAt: iso(row.createdAt),
-        updatedAt: iso(row.updatedAt),
     }
 }
 

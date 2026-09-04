@@ -5,11 +5,9 @@ import type { AppEnv } from '@/utils'
 
 export function createDebugDomain(context: AppContext) {
     return new Hono<AppEnv>()
-        .get('/requests', (c) =>
-            c.json({ requests: context.store.generations.listRequestDebugRecords() }),
-        )
+        .get('/requests', (c) => c.json({ requests: context.store.requestDebug.list() }))
         .delete('/requests', (c) => {
-            const deleted = context.store.generations.clearRequestDebugRecords()
+            const deleted = context.store.requestDebug.clear()
             return c.json({ deleted })
         })
 }

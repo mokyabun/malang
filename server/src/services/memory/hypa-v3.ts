@@ -33,14 +33,18 @@ export class HypaMemoryV3Service {
     ) {}
 
     state(conversationId: string): LongTermMemoryState {
-        return this.store.memory.state(conversationId)
+        return {
+            settings: this.store.memorySettings.get(conversationId),
+            summaries: this.store.memorySummary.list(conversationId),
+            metrics: this.store.memoryMetrics.get(conversationId),
+        }
     }
 
     updateSettings(
         conversationId: string,
         patch: Partial<LongTermMemorySettings>,
     ): LongTermMemoryState {
-        this.store.memory.updateSettings(conversationId, patch)
+        this.store.memorySettings.update(conversationId, patch)
         return this.state(conversationId)
     }
 
@@ -49,17 +53,17 @@ export class HypaMemoryV3Service {
         summaryId: string,
         patch: { text?: string; isImportant?: boolean },
     ) {
-        return this.store.memory.updateSummary(conversationId, summaryId, {
+        return this.store.memorySummary.update(conversationId, summaryId, {
             ...patch,
             ...(patch.text === undefined ? {} : { vector: featureVector(patch.text) }),
         })
     }
 
     deleteSummary(conversationId: string, summaryId: string): boolean {
-        const deleted = this.store.memory.deleteSummary(conversationId, summaryId)
+        const deleted = this.store.memorySummary.delete(conversationId, summaryId)
         if (deleted) {
-            const metrics = this.store.memory.getMetrics(conversationId)
-            this.store.memory.setMetrics(conversationId, {
+            const metrics = this.store.memoryMetrics.get(conversationId)
+            this.store.memoryMetrics.set(conversationId, {
                 importantSummaryIds: metrics.importantSummaryIds.filter((id) => id !== summaryId),
                 recentSummaryIds: metrics.recentSummaryIds.filter((id) => id !== summaryId),
                 similarSummaryIds: metrics.similarSummaryIds.filter((id) => id !== summaryId),
@@ -70,7 +74,14 @@ export class HypaMemoryV3Service {
     }
 
     clear(conversationId: string): number {
-        return this.store.memory.clear(conversationId)
+        const deleted = this.store.memorySummary.clear(conversationId)
+        this.store.memoryMetrics.set(conversationId, {
+            importantSummaryIds: [],
+            recentSummaryIds: [],
+            similarSummaryIds: [],
+            randomSummaryIds: [],
+        })
+        return deleted
     }
 
     /** Recall existing memory without causing provider calls or database writes. */
@@ -79,7 +90,7 @@ export class HypaMemoryV3Service {
         messages: Message[],
         maxContextTokens: number,
     ): HypaMemoryPrompt {
-        const settings = this.store.memory.getSettings(conversationId)
+        const settings = this.store.memorySettings.get(conversationId)
         if (!settings.enabled) return emptyPrompt()
         return this.select(conversationId, messages, maxContextTokens, settings, false)
     }
@@ -91,11 +102,11 @@ export class HypaMemoryV3Service {
         maxContextTokens: number,
         forceSummarizeMessageIds: string[] = [],
     ): Promise<HypaMemoryPrompt> {
-        const settings = this.store.memory.getSettings(conversationId)
+        const settings = this.store.memorySettings.get(conversationId)
         if (!settings.enabled) return emptyPrompt()
 
         this.reconcileOrphans(conversationId, messages, settings)
-        let summaries = this.store.memory.listSummaryRecords(conversationId)
+        let summaries = this.store.memorySummary.listRecords(conversationId)
         const summarizedIds = new Set(summaries.flatMap((summary) => summary.sourceMessageIds))
         const candidates = messages.filter(
             (message) =>
@@ -123,7 +134,7 @@ export class HypaMemoryV3Service {
             const batch = eligible.splice(0, settings.maxMessagesPerSummary)
             if (batch.length < 2) break
             const summaryText = await this.summarize(conversationId, batch, settings)
-            this.store.memory.createSummary({
+            this.store.memorySummary.create({
                 conversationId,
                 text: summaryText,
                 sourceMessageIds: batch.map((message) => message.id),
@@ -144,7 +155,7 @@ export class HypaMemoryV3Service {
             )
         }
 
-        summaries = this.store.memory.listSummaryRecords(conversationId)
+        summaries = this.store.memorySummary.listRecords(conversationId)
         return this.select(conversationId, messages, maxContextTokens, settings, true, summaries)
     }
 
@@ -155,7 +166,7 @@ export class HypaMemoryV3Service {
     ): void {
         if (settings.preserveOrphanedMemory) return
         const currentIds = new Set(messages.map((message) => message.id))
-        for (const summary of this.store.memory.listSummaryRecords(conversationId)) {
+        for (const summary of this.store.memorySummary.listRecords(conversationId)) {
             if (summary.sourceMessageIds.some((id) => !currentIds.has(id))) {
                 this.deleteSummary(conversationId, summary.id)
             }
@@ -168,7 +179,7 @@ export class HypaMemoryV3Service {
         maxContextTokens: number,
         settings: LongTermMemorySettings,
         persistMetrics: boolean,
-        summaryRecords = this.store.memory.listSummaryRecords(conversationId),
+        summaryRecords = this.store.memorySummary.listRecords(conversationId),
     ): HypaMemoryPrompt {
         if (!summaryRecords.length) return emptyPrompt()
         const query = messages
@@ -182,7 +193,7 @@ export class HypaMemoryV3Service {
             Math.max(0, Math.floor(maxContextTokens * settings.memoryTokensRatio) - 12),
             settings,
         )
-        if (persistMetrics) this.store.memory.setMetrics(conversationId, selection.metrics)
+        if (persistMetrics) this.store.memoryMetrics.set(conversationId, selection.metrics)
         const summarizedMessageIds = [
             ...new Set(summaryRecords.flatMap((summary) => summary.sourceMessageIds)),
         ]

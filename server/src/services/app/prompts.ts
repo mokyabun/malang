@@ -10,36 +10,32 @@ export class PromptService {
     constructor(private readonly store: Store) {}
 
     list() {
-        return this.store.prompts.listPromptPresets()
+        return this.store.promptPreset.list()
     }
 
     get(id: string) {
-        return this.store.prompts.getPromptPreset(id)
+        return this.store.promptPreset.get(id)
     }
 
     create(input: PromptPresetInput) {
-        return this.store.prompts.createPromptPreset(input)
+        return this.store.promptPreset.create(input)
     }
 
     update(id: string, input: PromptPresetInput) {
-        return this.store.prompts.updatePromptPreset(id, input)
+        return this.store.promptPreset.update(id, input)
     }
 
     delete(id: string) {
-        return this.store.prompts.deletePromptPreset(id)
+        return this.store.promptPreset.delete(id)
     }
 
     async import(bytes: Uint8Array, filename: string) {
         const decoded = await importPromptPreset(bytes, filename)
-        return this.store.prompts.createPromptPreset(
-            decoded.input,
-            decoded.source,
-            decoded.warnings,
-        )
+        return this.store.promptPreset.create(decoded.input, decoded.source, decoded.warnings)
     }
 
     async export(id: string, format: 'json' | 'risupreset' | 'risup') {
-        const preset = this.store.prompts.getPromptPreset(id)
+        const preset = this.store.promptPreset.get(id)
         if (!preset) return null
         return exportPromptPreset(
             {
@@ -57,7 +53,7 @@ export class PromptService {
     }
 
     importRegex(id: string, bytes: Uint8Array, mode: 'append' | 'replace') {
-        const preset = this.store.prompts.getPromptPreset(id)
+        const preset = this.store.promptPreset.get(id)
         if (!preset) return null
         let source: unknown
         try {
@@ -78,7 +74,7 @@ export class PromptService {
     }
 
     exportRegex(id: string) {
-        const preset = this.store.prompts.getPromptPreset(id)
+        const preset = this.store.promptPreset.get(id)
         if (!preset) return null
         return new TextEncoder().encode(
             JSON.stringify(
@@ -97,7 +93,7 @@ export class PromptService {
     }
 }
 
-function presetInput(preset: ReturnType<Store['prompts']['getPromptPreset']> & {}) {
+function presetInput(preset: ReturnType<Store['promptPreset']['get']> & {}) {
     if (!preset) throw new Error('Prompt preset not found')
     return {
         name: preset.name,

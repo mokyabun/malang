@@ -7,7 +7,7 @@ import { type AppEnv, jsonValidator } from '@/utils'
 
 export function createSettingsDomain(context: AppContext) {
     return new Hono<AppEnv>()
-        .get('/', (c) => c.json(context.store.settings.getSettings()))
+        .get('/', (c) => c.json(context.store.settings.get()))
         .get('/backup', (c) => c.json({ allowed: context.config.autoBackupEnabled }))
         .patch('/', jsonValidator(AppSettingsSchema.partial()), (c) => {
             const body = c.req.valid('json')
@@ -29,6 +29,6 @@ export function createSettingsDomain(context: AppContext) {
             ) {
                 throw new ValidationError('Default auxiliary model preset does not exist')
             }
-            return c.json(context.store.settings.updateSettings(body))
+            return c.json(context.store.settings.update(body))
         })
 }

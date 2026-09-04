@@ -26,7 +26,7 @@ describe('automatic database backups', () => {
     beforeEach(() => {
         directory = mkdtempSync(join(tmpdir(), 'malang-backup-'))
         store = new Store(openDatabase(join(directory, 'data.sqlite')))
-        store.settings.ensureSettings()
+        store.settings.ensure()
         const config = loadConfig({ NODE_ENV: 'test', DATA_DIR: directory })
         backup = new BackupService(config, store, createLogger(config))
     })
@@ -41,8 +41,8 @@ describe('automatic database backups', () => {
             .sort()
 
     test('creates a private, consistent snapshot including WAL writes and skips unchanged data', () => {
-        expect(store.settings.getSettings().autoBackupEnabled).toBe(true)
-        store.settings.updateSettings({ userName: 'WAL snapshot' })
+        expect(store.settings.get().autoBackupEnabled).toBe(true)
+        store.settings.update({ userName: 'WAL snapshot' })
         backup.start()
         backup.run()
         expect(snapshots()).toHaveLength(1)
@@ -59,23 +59,23 @@ describe('automatic database backups', () => {
         } finally {
             restored.close()
         }
-        store.settings.updateSettings({ userName: 'Changed' })
+        store.settings.update({ userName: 'Changed' })
         backup.run()
         expect(snapshots()).toHaveLength(2)
     })
 
     test('settings opt-out persists and preserves existing snapshots; re-enable resumes', () => {
         backup.run()
-        store.settings.updateSettings({ autoBackupEnabled: false })
+        store.settings.update({ autoBackupEnabled: false })
         backup.run()
         expect(snapshots()).toHaveLength(1)
         const reopened = new Store(openDatabase(join(directory, 'data.sqlite')))
         try {
-            expect(reopened.settings.getSettings().autoBackupEnabled).toBe(false)
+            expect(reopened.settings.get().autoBackupEnabled).toBe(false)
         } finally {
             reopened.close()
         }
-        store.settings.updateSettings({ autoBackupEnabled: true })
+        store.settings.update({ autoBackupEnabled: true })
         backup.run()
         expect(snapshots()).toHaveLength(2)
     })
@@ -113,7 +113,7 @@ describe('automatic database backups', () => {
             .filter((name) => name.startsWith('auto-'))
             .at(-1)!
         truncateSync(join(backup.directory, newest), BACKUP_MAX_BYTES + 1)
-        store.settings.updateSettings({ userName: 'Next' })
+        store.settings.update({ userName: 'Next' })
         backup.run()
         expect(existsSync(join(backup.directory, newest))).toBe(false)
         expect(existsSync(manual)).toBe(true)
