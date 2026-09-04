@@ -1,4 +1,30 @@
+import type {
+    GenerationParameters,
+    LoreEntry,
+    LoreEntryInput,
+    LoreSettings,
+    LongTermMemoryMetrics,
+    LongTermMemorySettings,
+    ModelChainGraph,
+    ModelChainLayer,
+    ModulePrompt,
+    PromptBlock,
+    PromptSettings,
+    PromptToggle,
+    ProviderConfig,
+    RegexScript,
+    RequestDebugSnapshot,
+} from '@malang/shared'
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+
+type JsonObject = Record<string, unknown>
+type StringMap = Record<string, string>
+type ModelChainConfig = {
+    version: 2 | 3
+    layers: ModelChainLayer[]
+    graph?: ModelChainGraph
+}
+type SparseVector = Record<string, number>
 
 const timestampColumns = {
     createdAt: integer('created_at').notNull(),
@@ -28,8 +54,14 @@ export const sessions = sqliteTable(
 export const appSettings = sqliteTable('app_settings', {
     id: integer('id').primaryKey(),
     userName: text('user_name').notNull(),
-    globalVariablesJson: text('global_variables_json').notNull(),
-    promptToggleValuesJson: text('prompt_toggle_values_json').notNull().default('{}'),
+    globalVariablesJson: text('global_variables_json', { mode: 'json' })
+        .$type<StringMap>()
+        .notNull()
+        .default({}),
+    promptToggleValuesJson: text('prompt_toggle_values_json', { mode: 'json' })
+        .$type<StringMap>()
+        .notNull()
+        .default({}),
     defaultPromptPresetId: text('default_prompt_preset_id'),
     defaultModelPresetId: text('default_model_preset_id'),
     defaultAuxiliaryModelPresetId: text('default_auxiliary_model_preset_id'),
@@ -41,9 +73,10 @@ export const appSettings = sqliteTable('app_settings', {
         .default(false),
     jailbreakToggle: integer('jailbreak_toggle', { mode: 'boolean' }).notNull().default(false),
     chainOfThought: integer('chain_of_thought', { mode: 'boolean' }).notNull().default(false),
-    providerJson: text('provider_json'),
+    providerJson: text('provider_json', { mode: 'json' }).$type<ProviderConfig>(),
     autoBackupEnabled: integer('auto_backup_enabled', { mode: 'boolean' }).notNull().default(true),
     secretSalt: text('secret_salt'),
+    /** Encrypted envelope owned by SecretVault; intentionally opaque to Drizzle's JSON mapper. */
     providerSecretJson: text('provider_secret_json'),
     updatedAt: integer('updated_at').notNull(),
 })
@@ -62,7 +95,7 @@ export const modelApiKeys = sqliteTable('model_api_keys', {
 export const modelPresets = sqliteTable('model_presets', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    providerJson: text('provider_json').notNull(),
+    providerJson: text('provider_json', { mode: 'json' }).$type<ProviderConfig>().notNull(),
     apiKeyId: text('api_key_id').references(() => modelApiKeys.id, { onDelete: 'restrict' }),
     sortOrder: integer('sort_order').notNull().default(0),
     ...timestampColumns,
@@ -72,7 +105,7 @@ export const modelChainPresets = sqliteTable('model_chain_presets', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     description: text('description').notNull().default(''),
-    configJson: text('config_json').notNull(),
+    configJson: text('config_json', { mode: 'json' }).$type<ModelChainConfig>().notNull(),
     sortOrder: integer('sort_order').notNull().default(0),
     ...timestampColumns,
 })
@@ -104,21 +137,34 @@ export const characters = sqliteTable('characters', {
     personality: text('personality').notNull(),
     scenario: text('scenario').notNull(),
     firstMessage: text('first_message').notNull(),
-    alternateGreetingsJson: text('alternate_greetings_json').notNull(),
+    alternateGreetingsJson: text('alternate_greetings_json', { mode: 'json' })
+        .$type<string[]>()
+        .notNull(),
     exampleMessage: text('example_message').notNull(),
     systemPrompt: text('system_prompt').notNull(),
     postHistoryInstructions: text('post_history_instructions').notNull(),
     creator: text('creator').notNull(),
     characterVersion: text('character_version').notNull(),
-    tagsJson: text('tags_json').notNull(),
+    tagsJson: text('tags_json', { mode: 'json' }).$type<string[]>().notNull(),
     avatarAssetId: text('avatar_asset_id').references(() => assets.id, { onDelete: 'set null' }),
     sourceSpec: text('source_spec', { enum: ['v2', 'v3'] }).notNull(),
-    sourceExtensionsJson: text('source_extensions_json').notNull(),
-    sourceCardJson: text('source_card_json').notNull(),
-    loreSettingsJson: text('lore_settings_json').notNull(),
-    regexScriptsJson: text('regex_scripts_json').notNull().default('[]'),
-    moduleReferencesJson: text('module_references_json').notNull().default('[]'),
-    defaultVariablesJson: text('default_variables_json').notNull().default('{}'),
+    sourceExtensionsJson: text('source_extensions_json', { mode: 'json' })
+        .$type<JsonObject>()
+        .notNull(),
+    sourceCardJson: text('source_card_json', { mode: 'json' }).$type<JsonObject>().notNull(),
+    loreSettingsJson: text('lore_settings_json', { mode: 'json' }).$type<LoreSettings>().notNull(),
+    regexScriptsJson: text('regex_scripts_json', { mode: 'json' })
+        .$type<RegexScript[]>()
+        .notNull()
+        .default([]),
+    moduleReferencesJson: text('module_references_json', { mode: 'json' })
+        .$type<string[]>()
+        .notNull()
+        .default([]),
+    defaultVariablesJson: text('default_variables_json', { mode: 'json' })
+        .$type<StringMap>()
+        .notNull()
+        .default({}),
     luaCode: text('lua_code'),
     luaEnabled: integer('lua_enabled', { mode: 'boolean' }).notNull().default(false),
     luaLowLevelAccess: integer('lua_low_level_access', { mode: 'boolean' })
@@ -126,7 +172,10 @@ export const characters = sqliteTable('characters', {
         .default(false),
     luaRevision: integer('lua_revision').notNull().default(0),
     luaCodeSha256: text('lua_code_sha256').notNull().default(''),
-    luaRawTriggerJson: text('lua_raw_trigger_json').notNull().default('[]'),
+    luaRawTriggerJson: text('lua_raw_trigger_json', { mode: 'json' })
+        .$type<unknown[]>()
+        .notNull()
+        .default([]),
     groupId: text('group_id').references(() => characterGroups.id, { onDelete: 'set null' }),
     sortOrder: integer('sort_order').notNull().default(0),
     archivedAt: integer('archived_at'),
@@ -138,8 +187,8 @@ export const characterLoreEntries = sqliteTable('character_lore_entries', {
     characterId: text('character_id')
         .notNull()
         .references(() => characters.id, { onDelete: 'cascade' }),
-    keysJson: text('keys_json').notNull(),
-    secondaryKeysJson: text('secondary_keys_json').notNull(),
+    keysJson: text('keys_json', { mode: 'json' }).$type<string[]>().notNull(),
+    secondaryKeysJson: text('secondary_keys_json', { mode: 'json' }).$type<string[]>().notNull(),
     content: text('content').notNull(),
     enabled: integer('enabled', { mode: 'boolean' }).notNull(),
     constant: integer('constant', { mode: 'boolean' }).notNull(),
@@ -149,7 +198,7 @@ export const characterLoreEntries = sqliteTable('character_lore_entries', {
     insertionOrder: integer('insertion_order').notNull(),
     priority: integer('priority').notNull(),
     name: text('name').notNull(),
-    extensionsJson: text('extensions_json').notNull(),
+    extensionsJson: text('extensions_json', { mode: 'json' }).$type<JsonObject>().notNull(),
 })
 
 export const characterAssets = sqliteTable('character_assets', {
@@ -178,15 +227,38 @@ export const personas = sqliteTable('personas', {
 export const promptPresets = sqliteTable('prompt_presets', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    blocksJson: text('blocks_json').notNull(),
-    parametersJson: text('parameters_json').notNull(),
-    defaultVariablesJson: text('default_variables_json').notNull(),
-    togglesJson: text('toggles_json').notNull().default('[]'),
-    regexScriptsJson: text('regex_scripts_json').notNull().default('[]'),
-    moduleIntegrationsJson: text('module_integrations_json').notNull().default('[]'),
-    promptSettingsJson: text('prompt_settings_json').notNull().default('{}'),
-    warningsJson: text('warnings_json').notNull(),
-    sourceJson: text('source_json').notNull(),
+    blocksJson: text('blocks_json', { mode: 'json' }).$type<PromptBlock[]>().notNull(),
+    parametersJson: text('parameters_json', { mode: 'json' })
+        .$type<GenerationParameters>()
+        .notNull(),
+    defaultVariablesJson: text('default_variables_json', { mode: 'json' })
+        .$type<StringMap>()
+        .notNull(),
+    togglesJson: text('toggles_json', { mode: 'json' })
+        .$type<PromptToggle[]>()
+        .notNull()
+        .default([]),
+    regexScriptsJson: text('regex_scripts_json', { mode: 'json' })
+        .$type<RegexScript[]>()
+        .notNull()
+        .default([]),
+    moduleIntegrationsJson: text('module_integrations_json', { mode: 'json' })
+        .$type<string[]>()
+        .notNull()
+        .default([]),
+    promptSettingsJson: text('prompt_settings_json', { mode: 'json' })
+        .$type<PromptSettings>()
+        .notNull()
+        .default({
+            assistantPrefill: '',
+            postEndInnerFormat: '',
+            sendChatAsSystem: false,
+            sendName: false,
+            trimStartNewChat: false,
+            groupTemplate: '',
+        }),
+    warningsJson: text('warnings_json', { mode: 'json' }).$type<string[]>().notNull(),
+    sourceJson: text('source_json', { mode: 'json' }).$type<JsonObject>().notNull(),
     ...timestampColumns,
 })
 
@@ -206,17 +278,26 @@ export const promptModules = sqliteTable(
             .default(false),
         luaRevision: integer('lua_revision').notNull().default(0),
         luaCodeSha256: text('lua_code_sha256').notNull().default(''),
-        luaRawTriggerJson: text('lua_raw_trigger_json').notNull().default('[]'),
+        luaRawTriggerJson: text('lua_raw_trigger_json', { mode: 'json' })
+            .$type<unknown[]>()
+            .notNull()
+            .default([]),
         enabledByDefault: integer('enabled_by_default', { mode: 'boolean' })
             .notNull()
             .default(false),
-        promptsJson: text('prompts_json').notNull(),
-        togglesJson: text('toggles_json').notNull(),
-        regexScriptsJson: text('regex_scripts_json').notNull().default('[]'),
+        promptsJson: text('prompts_json', { mode: 'json' }).$type<ModulePrompt[]>().notNull(),
+        togglesJson: text('toggles_json', { mode: 'json' }).$type<PromptToggle[]>().notNull(),
+        regexScriptsJson: text('regex_scripts_json', { mode: 'json' })
+            .$type<RegexScript[]>()
+            .notNull()
+            .default([]),
         backgroundEmbedding: text('background_embedding').notNull().default(''),
-        lorebookJson: text('lorebook_json').notNull().default('[]'),
-        warningsJson: text('warnings_json').notNull(),
-        sourceJson: text('source_json').notNull(),
+        lorebookJson: text('lorebook_json', { mode: 'json' })
+            .$type<LoreEntryInput[]>()
+            .notNull()
+            .default([]),
+        warningsJson: text('warnings_json', { mode: 'json' }).$type<string[]>().notNull(),
+        sourceJson: text('source_json', { mode: 'json' }).$type<JsonObject>().notNull(),
         ...timestampColumns,
     },
     () => [],
@@ -264,7 +345,7 @@ export const conversations = sqliteTable('conversations', {
     }),
     title: text('title').notNull(),
     greetingIndex: integer('greeting_index').notNull(),
-    variablesJson: text('variables_json').notNull(),
+    variablesJson: text('variables_json', { mode: 'json' }).$type<StringMap>().notNull(),
     authorNote: text('author_note').notNull().default(''),
     boundPersonaId: text('bound_persona_id').references(() => personas.id, {
         onDelete: 'set null',
@@ -315,8 +396,16 @@ export const conversationMemorySettings = sqliteTable('conversation_memory_setti
     conversationId: text('conversation_id')
         .primaryKey()
         .references(() => conversations.id, { onDelete: 'cascade' }),
-    settingsJson: text('settings_json').notNull(),
-    metricsJson: text('metrics_json').notNull().default('{}'),
+    settingsJson: text('settings_json', { mode: 'json' }).$type<LongTermMemorySettings>().notNull(),
+    metricsJson: text('metrics_json', { mode: 'json' })
+        .$type<LongTermMemoryMetrics>()
+        .notNull()
+        .default({
+            importantSummaryIds: [],
+            recentSummaryIds: [],
+            similarSummaryIds: [],
+            randomSummaryIds: [],
+        }),
     updatedAt: integer('updated_at').notNull(),
 })
 
@@ -328,8 +417,10 @@ export const conversationMemorySummaries = sqliteTable(
             .notNull()
             .references(() => conversations.id, { onDelete: 'cascade' }),
         text: text('text').notNull(),
-        sourceMessageIdsJson: text('source_message_ids_json').notNull(),
-        vectorJson: text('vector_json').notNull(),
+        sourceMessageIdsJson: text('source_message_ids_json', { mode: 'json' })
+            .$type<string[]>()
+            .notNull(),
+        vectorJson: text('vector_json', { mode: 'json' }).$type<SparseVector>().notNull(),
         isImportant: integer('is_important', { mode: 'boolean' }).notNull().default(false),
         ...timestampColumns,
     },
@@ -366,7 +457,9 @@ export const generationRuns = sqliteTable(
         status: text('status', { enum: ['running', 'complete', 'cancelled', 'failed'] }).notNull(),
         provider: text('provider').notNull(),
         modelId: text('model_id').notNull(),
-        parametersJson: text('parameters_json').notNull(),
+        parametersJson: text('parameters_json', { mode: 'json' })
+            .$type<GenerationParameters>()
+            .notNull(),
         outputText: text('output_text').notNull(),
         processedOutputText: text('processed_output_text').notNull().default(''),
         inputTokens: integer('input_tokens'),
@@ -391,8 +484,10 @@ export const requestDebugRecords = sqliteTable('request_debug_records', {
         .references(() => conversations.id, { onDelete: 'cascade' }),
     provider: text('provider').notNull(),
     modelId: text('model_id').notNull(),
-    parametersJson: text('parameters_json').notNull(),
-    requestJson: text('request_json').notNull(),
+    parametersJson: text('parameters_json', { mode: 'json' })
+        .$type<GenerationParameters>()
+        .notNull(),
+    requestJson: text('request_json', { mode: 'json' }).$type<RequestDebugSnapshot>().notNull(),
     createdAt: integer('created_at').notNull(),
 })
 
@@ -405,7 +500,7 @@ export const luaStates = sqliteTable(
         ownerType: text('owner_type', { enum: ['character', 'module'] }).notNull(),
         ownerId: text('owner_id').notNull(),
         stateKey: text('state_key').notNull(),
-        valueJson: text('value_json').notNull(),
+        valueJson: text('value_json', { mode: 'json' }).$type<unknown>().notNull(),
         version: integer('version').notNull().default(1),
         updatedAt: integer('updated_at').notNull(),
     },
@@ -427,9 +522,9 @@ export const luaEventRuns = sqliteTable(
         phase: text('phase').notNull(),
         clientInstanceId: text('client_instance_id'),
         status: text('status', { enum: ['running', 'complete', 'failed'] }).notNull(),
-        inputJson: text('input_json').notNull().default('{}'),
-        resultJson: text('result_json'),
-        errorJson: text('error_json'),
+        inputJson: text('input_json', { mode: 'json' }).$type<JsonObject>().notNull().default({}),
+        resultJson: text('result_json', { mode: 'json' }).$type<unknown>(),
+        errorJson: text('error_json', { mode: 'json' }).$type<JsonObject>(),
         createdAt: integer('created_at').notNull(),
         completedAt: integer('completed_at'),
     },
@@ -454,9 +549,12 @@ export const luaInvocations = sqliteTable(
         scriptRevision: integer('script_revision').notNull(),
         sequence: integer('sequence').notNull(),
         status: text('status', { enum: ['running', 'complete', 'failed'] }).notNull(),
-        resultJson: text('result_json'),
-        warningsJson: text('warnings_json').notNull().default('[]'),
-        errorJson: text('error_json'),
+        resultJson: text('result_json', { mode: 'json' }).$type<unknown>(),
+        warningsJson: text('warnings_json', { mode: 'json' })
+            .$type<string[]>()
+            .notNull()
+            .default([]),
+        errorJson: text('error_json', { mode: 'json' }).$type<JsonObject>(),
         createdAt: integer('created_at').notNull(),
         completedAt: integer('completed_at'),
     },
@@ -482,9 +580,12 @@ export const luaApiCalls = sqliteTable(
         status: text('status', {
             enum: ['running', 'complete', 'failed', 'indeterminate'],
         }).notNull(),
-        requestJson: text('request_json').notNull().default('{}'),
-        resultJson: text('result_json'),
-        errorJson: text('error_json'),
+        requestJson: text('request_json', { mode: 'json' })
+            .$type<JsonObject>()
+            .notNull()
+            .default({}),
+        resultJson: text('result_json', { mode: 'json' }).$type<unknown>(),
+        errorJson: text('error_json', { mode: 'json' }).$type<JsonObject>(),
         createdAt: integer('created_at').notNull(),
         completedAt: integer('completed_at'),
     },
@@ -501,8 +602,8 @@ export const luaRemoteCommands = sqliteTable(
         callIndex: integer('call_index').notNull(),
         clientInstanceId: text('client_instance_id').notNull(),
         kind: text('kind').notNull(),
-        payloadJson: text('payload_json').notNull(),
-        resultJson: text('result_json'),
+        payloadJson: text('payload_json', { mode: 'json' }).$type<unknown>().notNull(),
+        resultJson: text('result_json', { mode: 'json' }).$type<unknown>(),
         status: text('status', { enum: ['pending', 'complete', 'failed', 'expired'] }).notNull(),
         blocking: integer('blocking', { mode: 'boolean' }).notNull().default(false),
         expiresAt: integer('expires_at').notNull(),
@@ -523,8 +624,8 @@ export const luaDisplayBatches = sqliteTable(
         displayEpoch: integer('display_epoch').notNull(),
         scriptSetHash: text('script_set_hash').notNull(),
         status: text('status', { enum: ['running', 'complete', 'failed'] }).notNull(),
-        resultJson: text('result_json'),
-        errorJson: text('error_json'),
+        resultJson: text('result_json', { mode: 'json' }).$type<unknown>(),
+        errorJson: text('error_json', { mode: 'json' }).$type<JsonObject>(),
         createdAt: integer('created_at').notNull(),
         completedAt: integer('completed_at'),
     },
@@ -541,7 +642,7 @@ export const conversationLoreEntries = sqliteTable(
             .notNull()
             .references(() => conversations.id, { onDelete: 'cascade' }),
         name: text('name').notNull(),
-        entryJson: text('entry_json').notNull(),
+        entryJson: text('entry_json', { mode: 'json' }).$type<LoreEntry>().notNull(),
         updatedAt: integer('updated_at').notNull(),
     },
     (table) => [

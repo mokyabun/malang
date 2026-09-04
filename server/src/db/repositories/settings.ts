@@ -2,7 +2,7 @@ import type { AppSettings } from '@malang/shared'
 import { eq } from 'drizzle-orm'
 
 import { appSettings } from '../schema'
-import { normalizeToggleValues, parseJson, RepositoryBase, requireValue } from './base'
+import { normalizeToggleValues, RepositoryBase, requireValue } from './base'
 
 export class SettingsRepository extends RepositoryBase {
     ensureSettings(): void {
@@ -12,8 +12,8 @@ export class SettingsRepository extends RepositoryBase {
             .values({
                 id: 1,
                 userName: 'User',
-                globalVariablesJson: '{}',
-                promptToggleValuesJson: '{}',
+                globalVariablesJson: {},
+                promptToggleValuesJson: {},
                 defaultPromptPresetId: null,
                 defaultModelPresetId: null,
                 defaultAuxiliaryModelPresetId: null,
@@ -32,8 +32,8 @@ export class SettingsRepository extends RepositoryBase {
         )
         return {
             userName: row.userName,
-            globalVariables: parseJson(row.globalVariablesJson, {}),
-            promptToggleValues: normalizeToggleValues(parseJson(row.promptToggleValuesJson, {})),
+            globalVariables: row.globalVariablesJson,
+            promptToggleValues: normalizeToggleValues(row.promptToggleValuesJson),
             defaultPromptPresetId: row.defaultPromptPresetId,
             defaultModelPresetId: row.defaultModelPresetId,
             defaultAuxiliaryModelPresetId: row.defaultAuxiliaryModelPresetId,
@@ -52,8 +52,8 @@ export class SettingsRepository extends RepositoryBase {
             .update(appSettings)
             .set({
                 userName: next.userName,
-                globalVariablesJson: JSON.stringify(next.globalVariables),
-                promptToggleValuesJson: JSON.stringify(next.promptToggleValues),
+                globalVariablesJson: next.globalVariables,
+                promptToggleValuesJson: next.promptToggleValues,
                 defaultPromptPresetId: next.defaultPromptPresetId,
                 defaultModelPresetId: next.defaultModelPresetId,
                 defaultAuxiliaryModelPresetId: next.defaultAuxiliaryModelPresetId,

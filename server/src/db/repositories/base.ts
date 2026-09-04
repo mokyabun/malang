@@ -18,14 +18,6 @@ export abstract class RepositoryBase {
     }
 }
 
-export function parseJson<T>(value: string, fallback: T): T {
-    try {
-        return JSON.parse(value) as T
-    } catch {
-        return fallback
-    }
-}
-
 export function iso(value: number): string
 export function iso(value: null): null
 export function iso(value: number | null): string | null

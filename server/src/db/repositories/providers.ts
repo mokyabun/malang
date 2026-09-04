@@ -9,7 +9,7 @@ import {
     modelChainPresets,
     modelPresets,
 } from '../schema'
-import { iso, parseJson, RepositoryBase, requireValue } from './base'
+import { iso, RepositoryBase, requireValue } from './base'
 import { SettingsRepository } from './settings'
 
 export class ProviderRepository extends RepositoryBase {
@@ -27,14 +27,14 @@ export class ProviderRepository extends RepositoryBase {
             .from(appSettings)
             .where(eq(appSettings.id, 1))
             .get()
-        return row?.providerJson ? parseJson<ProviderConfig | null>(row.providerJson, null) : null
+        return row?.providerJson ?? null
     }
 
     setProvider(provider: ProviderConfig): ProviderConfig {
         this.settings.ensureSettings()
         this.db
             .update(appSettings)
-            .set({ providerJson: JSON.stringify(provider), updatedAt: Date.now() })
+            .set({ providerJson: provider, updatedAt: Date.now() })
             .where(eq(appSettings.id, 1))
             .run()
         return provider
@@ -66,7 +66,7 @@ export class ProviderRepository extends RepositoryBase {
             .values({
                 id,
                 name: input.name,
-                providerJson: JSON.stringify(input.config),
+                providerJson: input.config,
                 apiKeyId: input.apiKeyId,
                 sortOrder: (last?.value ?? -1) + 1,
                 createdAt: now,
@@ -82,7 +82,7 @@ export class ProviderRepository extends RepositoryBase {
             .update(modelPresets)
             .set({
                 name: input.name,
-                providerJson: JSON.stringify(input.config),
+                providerJson: input.config,
                 apiKeyId: input.apiKeyId,
                 updatedAt: Date.now(),
             })
@@ -116,10 +116,7 @@ export class ProviderRepository extends RepositoryBase {
             .from(modelChainPresets)
             .all()
             .some(({ configJson }) => {
-                const parsed = parseJson<{
-                    layers?: Array<{ agents?: Array<{ modelPresetId?: string }> }>
-                }>(configJson, {})
-                const agents = (parsed.layers ?? []).flatMap((layer) => layer.agents ?? [])
+                const agents = configJson.layers.flatMap((layer) => layer.agents)
                 return agents.some((agent) => agent.modelPresetId === id)
             })
         if (usedByChain) return 'in_use'
@@ -219,12 +216,7 @@ function mapModelPreset(row: typeof modelPresets.$inferSelect): ModelPreset {
     return {
         id: row.id,
         name: row.name,
-        config: parseJson<ProviderConfig>(row.providerJson, {
-            provider: 'echo',
-            modelId: 'echo',
-            defaults: {},
-            providerOptions: {},
-        }),
+        config: row.providerJson,
         apiKeyId: row.apiKeyId,
         sortOrder: row.sortOrder,
         createdAt: iso(row.createdAt),

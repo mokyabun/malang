@@ -3,7 +3,7 @@ import { and, asc, desc, eq } from 'drizzle-orm'
 
 import type { DatabaseHandle } from '../db'
 import { generationRuns, requestDebugRecords } from '../schema'
-import { iso, parseJson, RepositoryBase } from './base'
+import { iso, RepositoryBase } from './base'
 import { ConversationRepository } from './conversations'
 
 export class GenerationRepository extends RepositoryBase {
@@ -81,7 +81,7 @@ export class GenerationRepository extends RepositoryBase {
             .values({
                 ...input,
                 status: 'running',
-                parametersJson: JSON.stringify(input.parameters),
+                parametersJson: input.parameters,
                 outputText: '',
                 processedOutputText: '',
                 startedAt: Date.now(),
@@ -130,8 +130,8 @@ export class GenerationRepository extends RepositoryBase {
             conversationId: input.conversationId,
             provider: input.provider,
             modelId: input.modelId,
-            parametersJson: JSON.stringify(input.parameters),
-            requestJson: JSON.stringify(input.request),
+            parametersJson: input.parameters,
+            requestJson: input.request,
             createdAt: Date.now(),
         }
         this.db.insert(requestDebugRecords).values(row).run()
@@ -198,7 +198,7 @@ function mapGenerationRun(row: typeof generationRuns.$inferSelect) {
         status: row.status,
         provider: row.provider,
         modelId: row.modelId,
-        parameters: parseJson<GenerationParameters>(row.parametersJson, {}),
+        parameters: row.parametersJson,
         outputText: row.outputText,
         processedOutputText: row.processedOutputText,
         inputTokens: row.inputTokens,
@@ -217,13 +217,8 @@ function mapRequestDebugRecord(row: typeof requestDebugRecords.$inferSelect) {
         conversationId: row.conversationId,
         provider: row.provider,
         modelId: row.modelId,
-        parameters: parseJson<GenerationParameters>(row.parametersJson, {}),
-        request: parseJson<RequestDebugSnapshot>(row.requestJson, {
-            endpoint: '',
-            method: 'POST',
-            headers: {},
-            body: null,
-        }),
+        parameters: row.parametersJson,
+        request: row.requestJson,
         createdAt: iso(row.createdAt),
     }
 }

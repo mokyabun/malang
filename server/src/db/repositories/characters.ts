@@ -21,7 +21,6 @@ import {
     iso,
     mapLuaScript,
     newLuaColumns,
-    parseJson,
     RepositoryBase,
     requireValue,
     updateLuaColumns,
@@ -91,7 +90,7 @@ export class CharacterRepository extends RepositoryBase {
             .from(characterLoreEntries)
             .where(eq(characterLoreEntries.characterId, characterId))
             .all()
-        return new Map(rows.map((row) => [row.id, parseJson(row.extensionsJson, {})]))
+        return new Map(rows.map((row) => [row.id, row.extensionsJson]))
     }
 
     ensureGeneralChatCharacter(): CharacterRecord {
@@ -177,23 +176,23 @@ export class CharacterRepository extends RepositoryBase {
                     personality: input.personality,
                     scenario: input.scenario,
                     firstMessage: input.firstMessage,
-                    alternateGreetingsJson: JSON.stringify(input.alternateGreetings),
+                    alternateGreetingsJson: input.alternateGreetings,
                     exampleMessage: input.exampleMessage,
                     systemPrompt: input.systemPrompt,
                     postHistoryInstructions: input.postHistoryInstructions,
                     creator: input.creator,
                     characterVersion: input.characterVersion,
-                    tagsJson: JSON.stringify(input.tags),
+                    tagsJson: input.tags,
                     avatarAssetId: input.avatarAssetId,
                     sourceSpec: input.sourceSpec,
-                    sourceExtensionsJson: JSON.stringify(input.sourceExtensions),
-                    sourceCardJson: JSON.stringify(input.sourceCard),
-                    loreSettingsJson: JSON.stringify(input.loreSettings),
-                    regexScriptsJson: JSON.stringify(input.regexScripts),
-                    moduleReferencesJson: JSON.stringify(input.moduleReferences),
-                    defaultVariablesJson: JSON.stringify(input.defaultVariables || {}),
+                    sourceExtensionsJson: input.sourceExtensions,
+                    sourceCardJson: input.sourceCard,
+                    loreSettingsJson: input.loreSettings,
+                    regexScriptsJson: input.regexScripts,
+                    moduleReferencesJson: input.moduleReferences,
+                    defaultVariablesJson: input.defaultVariables || {},
                     ...newLuaColumns(input.luaScript),
-                    luaRawTriggerJson: JSON.stringify(input.luaRawTriggers || []),
+                    luaRawTriggerJson: input.luaRawTriggers || [],
                     groupId: null,
                     sortOrder,
                     archivedAt: null,
@@ -207,8 +206,8 @@ export class CharacterRepository extends RepositoryBase {
                         input.lorebook.map((entry) => ({
                             id: entry.id || crypto.randomUUID(),
                             characterId: input.id,
-                            keysJson: JSON.stringify(entry.keys),
-                            secondaryKeysJson: JSON.stringify(entry.secondaryKeys),
+                            keysJson: entry.keys,
+                            secondaryKeysJson: entry.secondaryKeys,
                             content: entry.content,
                             enabled: entry.enabled,
                             constant: entry.constant,
@@ -218,7 +217,7 @@ export class CharacterRepository extends RepositoryBase {
                             insertionOrder: entry.insertionOrder,
                             priority: entry.priority,
                             name: entry.name,
-                            extensionsJson: JSON.stringify(loreExtensions(entry)),
+                            extensionsJson: loreExtensions(entry),
                         })),
                     )
                     .run()
@@ -341,31 +340,29 @@ export class CharacterRepository extends RepositoryBase {
         if (id === GENERAL_CHAT_CHARACTER_ID) return null
         const current = this.getCharacter(id)
         if (!current) return null
-        const patch: Record<string, unknown> = { updatedAt: Date.now() }
+        const patch: Partial<typeof characters.$inferInsert> = { updatedAt: Date.now() }
         if (update.name !== undefined) patch.name = update.name
         if (update.description !== undefined) patch.description = update.description
         if (update.personality !== undefined) patch.personality = update.personality
         if (update.scenario !== undefined) patch.scenario = update.scenario
         if (update.firstMessage !== undefined) patch.firstMessage = update.firstMessage
         if (update.alternateGreetings !== undefined)
-            patch.alternateGreetingsJson = JSON.stringify(update.alternateGreetings)
+            patch.alternateGreetingsJson = update.alternateGreetings
         if (update.exampleMessage !== undefined) patch.exampleMessage = update.exampleMessage
         if (update.systemPrompt !== undefined) patch.systemPrompt = update.systemPrompt
         if (update.postHistoryInstructions !== undefined)
             patch.postHistoryInstructions = update.postHistoryInstructions
         if (update.creator !== undefined) patch.creator = update.creator
         if (update.characterVersion !== undefined) patch.characterVersion = update.characterVersion
-        if (update.tags !== undefined) patch.tagsJson = JSON.stringify(update.tags)
-        if (update.regexScripts !== undefined)
-            patch.regexScriptsJson = JSON.stringify(update.regexScripts)
+        if (update.tags !== undefined) patch.tagsJson = update.tags
+        if (update.regexScripts !== undefined) patch.regexScriptsJson = update.regexScripts
         if (update.moduleReferences !== undefined)
-            patch.moduleReferencesJson = JSON.stringify(update.moduleReferences)
+            patch.moduleReferencesJson = update.moduleReferences
         if (update.defaultVariables !== undefined)
-            patch.defaultVariablesJson = JSON.stringify(update.defaultVariables)
+            patch.defaultVariablesJson = update.defaultVariables
         if (update.luaScript !== undefined)
             Object.assign(patch, updateLuaColumns(current.luaScript, update.luaScript))
-        if (update.loreSettings !== undefined)
-            patch.loreSettingsJson = JSON.stringify(update.loreSettings)
+        if (update.loreSettings !== undefined) patch.loreSettingsJson = update.loreSettings
         this.sqlite.transaction(() => {
             this.db.update(characters).set(patch).where(eq(characters.id, id)).run()
             if (update.lorebook !== undefined) {
@@ -391,8 +388,8 @@ export class CharacterRepository extends RepositoryBase {
                             update.lorebook.map((entry) => ({
                                 id: entry.id,
                                 characterId: id,
-                                keysJson: JSON.stringify(entry.keys),
-                                secondaryKeysJson: JSON.stringify(entry.secondaryKeys),
+                                keysJson: entry.keys,
+                                secondaryKeysJson: entry.secondaryKeys,
                                 content: entry.content,
                                 enabled: entry.enabled,
                                 constant: entry.constant,
@@ -402,10 +399,10 @@ export class CharacterRepository extends RepositoryBase {
                                 insertionOrder: entry.insertionOrder,
                                 priority: entry.priority,
                                 name: entry.name,
-                                extensionsJson: JSON.stringify({
-                                    ...parseJson(extensions.get(entry.id) || '{}', {}),
+                                extensionsJson: {
+                                    ...extensions.get(entry.id),
                                     ...loreExtensions(entry),
-                                }),
+                                },
                             })),
                         )
                         .run()
@@ -478,14 +475,11 @@ export class CharacterRepository extends RepositoryBase {
                   .orderBy(asc(characterLoreEntries.insertionOrder))
                   .all()
                   .map((entry) => {
-                      const extensions = parseJson<Record<string, unknown>>(
-                          entry.extensionsJson,
-                          {},
-                      )
+                      const extensions = entry.extensionsJson
                       return {
                           id: entry.id,
-                          keys: parseJson(entry.keysJson, []),
-                          secondaryKeys: parseJson(entry.secondaryKeysJson, []),
+                          keys: entry.keysJson,
+                          secondaryKeys: entry.secondaryKeysJson,
                           content: entry.content,
                           enabled: entry.enabled,
                           constant: entry.constant,
@@ -506,27 +500,27 @@ export class CharacterRepository extends RepositoryBase {
             personality: row.personality,
             scenario: row.scenario,
             firstMessage: row.firstMessage,
-            alternateGreetings: parseJson(row.alternateGreetingsJson, []),
+            alternateGreetings: row.alternateGreetingsJson,
             exampleMessage: row.exampleMessage,
             systemPrompt: row.systemPrompt,
             postHistoryInstructions: row.postHistoryInstructions,
             creator: row.creator,
             characterVersion: row.characterVersion,
-            tags: parseJson(row.tagsJson, []),
+            tags: row.tagsJson,
             avatarAssetId: row.avatarAssetId,
             sourceSpec: row.sourceSpec,
             archivedAt: iso(row.archivedAt),
             groupId: row.groupId,
             sortOrder: row.sortOrder,
             lorebook,
-            sourceExtensions: parseJson(row.sourceExtensionsJson, {}),
-            sourceCard: parseJson(row.sourceCardJson, {}),
-            loreSettings: parseJson(row.loreSettingsJson, {}),
-            regexScripts: parseJson(row.regexScriptsJson, []),
-            moduleReferences: parseJson(row.moduleReferencesJson, []),
-            defaultVariables: parseJson(row.defaultVariablesJson, {}),
+            sourceExtensions: row.sourceExtensionsJson,
+            sourceCard: row.sourceCardJson,
+            loreSettings: row.loreSettingsJson,
+            regexScripts: row.regexScriptsJson,
+            moduleReferences: row.moduleReferencesJson,
+            defaultVariables: row.defaultVariablesJson,
             luaScript: mapLuaScript(row),
-            luaRawTriggers: parseJson(row.luaRawTriggerJson, []),
+            luaRawTriggers: row.luaRawTriggerJson,
             createdAt: iso(row.createdAt),
             updatedAt: iso(row.updatedAt),
         }

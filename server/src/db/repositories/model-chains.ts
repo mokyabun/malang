@@ -9,7 +9,7 @@ import { and, asc, eq, max } from 'drizzle-orm'
 
 import type { DatabaseHandle } from '../db'
 import { conversations, modelChainAgentMemories, modelChainPresets } from '../schema'
-import { iso, parseJson, RepositoryBase, requireValue } from './base'
+import { iso, RepositoryBase, requireValue } from './base'
 
 export class ModelChainRepository extends RepositoryBase {
     constructor(handle: DatabaseHandle) {
@@ -47,7 +47,7 @@ export class ModelChainRepository extends RepositoryBase {
                 id,
                 name: input.name,
                 description: input.description,
-                configJson: serializeChainConfig(input),
+                configJson: chainConfig(input),
                 sortOrder: (last?.value ?? -1) + 1,
                 createdAt: now,
                 updatedAt: now,
@@ -63,7 +63,7 @@ export class ModelChainRepository extends RepositoryBase {
             .set({
                 name: input.name,
                 description: input.description,
-                configJson: serializeChainConfig(input),
+                configJson: chainConfig(input),
                 updatedAt: Date.now(),
             })
             .where(eq(modelChainPresets.id, id))
@@ -127,19 +127,20 @@ function mapModelChainPreset(row: typeof modelChainPresets.$inferSelect): ModelC
     }
 }
 
-function serializeChainConfig(input: ModelChainPresetInput): string {
-    return JSON.stringify({
+function chainConfig(input: ModelChainPresetInput) {
+    return {
         version: input.graph ? 3 : 2,
         layers: input.layers,
         ...(input.graph ? { graph: input.graph } : {}),
-    })
+    } as const
 }
 
-function parseChainConfig(raw: string): Pick<ModelChainPreset, 'layers' | 'graph'> {
-    const config = parseJson<{ layers?: ModelChainLayer[]; graph?: ModelChainGraph }>(raw, {})
-    const layers = Array.isArray(config.layers) ? config.layers : []
+function parseChainConfig(config: {
+    layers: ModelChainLayer[]
+    graph?: ModelChainGraph
+}): Pick<ModelChainPreset, 'layers' | 'graph'> {
     return {
-        layers: layers.map((layer) => normalizeLayer(layer, Boolean(config.graph))),
+        layers: config.layers.map((layer) => normalizeLayer(layer, Boolean(config.graph))),
         ...(config.graph ? { graph: config.graph } : {}),
     }
 }

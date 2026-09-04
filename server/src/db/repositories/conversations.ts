@@ -10,7 +10,7 @@ import { and, asc, desc, eq, isNull, max, sql } from 'drizzle-orm'
 
 import type { DatabaseHandle } from '../db'
 import { conversationGroups, conversationModules, conversations, messages } from '../schema'
-import { iso, parseJson, RepositoryBase, requireValue } from './base'
+import { iso, RepositoryBase, requireValue } from './base'
 import { CharacterRepository } from './characters'
 import { PromptRepository } from './prompts'
 import { SettingsRepository } from './settings'
@@ -122,7 +122,7 @@ export class ConversationRepository extends RepositoryBase {
                 modelChainPresetId: input.modelChainPresetId ?? null,
                 title: input.title || defaultTitle,
                 greetingIndex: input.greetingIndex,
-                variablesJson: '{}',
+                variablesJson: {},
                 authorNote: '',
                 boundPersonaId: null,
                 personaLocked: false,
@@ -305,7 +305,7 @@ export class ConversationRepository extends RepositoryBase {
                     update.modelChainPresetId === undefined
                         ? current.modelChainPresetId
                         : update.modelChainPresetId,
-                variablesJson: JSON.stringify(update.variables ?? current.variables),
+                variablesJson: update.variables ?? current.variables,
                 authorNote: update.authorNote ?? current.authorNote,
                 boundPersonaId:
                     update.boundPersonaId === undefined
@@ -587,7 +587,7 @@ function mapConversation(row: typeof conversations.$inferSelect): Conversation {
         modelChainPresetId: row.modelChainPresetId,
         title: row.title,
         greetingIndex: row.greetingIndex,
-        variables: parseJson(row.variablesJson, {}),
+        variables: row.variablesJson,
         authorNote: row.authorNote,
         boundPersonaId: row.boundPersonaId,
         personaLocked: row.personaLocked,

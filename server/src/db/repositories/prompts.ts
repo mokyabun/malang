@@ -1,5 +1,4 @@
 import type {
-    GenerationParameters,
     LoreEntry,
     PromptBlock,
     PromptModule,
@@ -16,12 +15,20 @@ import {
     iso,
     mapLuaScript,
     newLuaColumns,
-    parseJson,
     RepositoryBase,
     requireValue,
     updateLuaColumns,
 } from './base'
 import { SettingsRepository } from './settings'
+
+const defaultPromptSettings = {
+    assistantPrefill: '',
+    postEndInnerFormat: '',
+    sendChatAsSystem: false,
+    sendName: false,
+    trimStartNewChat: false,
+    groupTemplate: '',
+}
 
 export interface PromptModuleAssetRecord {
     id: string
@@ -53,15 +60,15 @@ export class PromptRepository extends RepositoryBase {
             .values({
                 id,
                 name: input.name,
-                blocksJson: JSON.stringify(input.blocks),
-                parametersJson: JSON.stringify(input.parameters),
-                defaultVariablesJson: JSON.stringify(input.defaultVariables),
-                togglesJson: JSON.stringify(input.toggles || []),
-                regexScriptsJson: JSON.stringify(input.regexScripts || []),
-                moduleIntegrationsJson: JSON.stringify(input.moduleIntegrations || []),
-                promptSettingsJson: JSON.stringify(input.promptSettings || {}),
-                warningsJson: JSON.stringify(warnings),
-                sourceJson: JSON.stringify(source),
+                blocksJson: input.blocks,
+                parametersJson: input.parameters,
+                defaultVariablesJson: input.defaultVariables,
+                togglesJson: input.toggles || [],
+                regexScriptsJson: input.regexScripts || [],
+                moduleIntegrationsJson: input.moduleIntegrations || [],
+                promptSettingsJson: { ...defaultPromptSettings, ...input.promptSettings },
+                warningsJson: warnings,
+                sourceJson: source,
                 createdAt: now,
                 updatedAt: now,
             })
@@ -75,13 +82,13 @@ export class PromptRepository extends RepositoryBase {
             .update(promptPresets)
             .set({
                 name: input.name,
-                blocksJson: JSON.stringify(input.blocks),
-                parametersJson: JSON.stringify(input.parameters),
-                defaultVariablesJson: JSON.stringify(input.defaultVariables),
-                togglesJson: JSON.stringify(input.toggles || []),
-                regexScriptsJson: JSON.stringify(input.regexScripts || []),
-                moduleIntegrationsJson: JSON.stringify(input.moduleIntegrations || []),
-                promptSettingsJson: JSON.stringify(input.promptSettings || {}),
+                blocksJson: input.blocks,
+                parametersJson: input.parameters,
+                defaultVariablesJson: input.defaultVariables,
+                togglesJson: input.toggles || [],
+                regexScriptsJson: input.regexScripts || [],
+                moduleIntegrationsJson: input.moduleIntegrations || [],
+                promptSettingsJson: { ...defaultPromptSettings, ...input.promptSettings },
                 updatedAt: Date.now(),
             })
             .where(eq(promptPresets.id, id))
@@ -109,7 +116,7 @@ export class PromptRepository extends RepositoryBase {
             .from(promptPresets)
             .where(eq(promptPresets.id, id))
             .get()
-        return parseJson(row?.sourceJson || '{}', {})
+        return row?.sourceJson || {}
     }
 
     deletePromptPreset(id: string): 'deleted' | 'not_found' | 'in_use' {
@@ -143,15 +150,15 @@ export class PromptRepository extends RepositoryBase {
                 sourceId: input.sourceId || '',
                 runtimeOrder: input.runtimeOrder ?? 0,
                 ...newLuaColumns(input.luaScript),
-                luaRawTriggerJson: JSON.stringify(input.luaRawTriggers || []),
+                luaRawTriggerJson: input.luaRawTriggers || [],
                 enabledByDefault: input.enabledByDefault,
-                promptsJson: JSON.stringify(input.prompts),
-                togglesJson: JSON.stringify(input.toggles || []),
-                regexScriptsJson: JSON.stringify(input.regexScripts || []),
+                promptsJson: input.prompts,
+                togglesJson: input.toggles || [],
+                regexScriptsJson: input.regexScripts || [],
                 backgroundEmbedding: input.backgroundEmbedding || '',
-                lorebookJson: JSON.stringify(input.lorebook),
-                warningsJson: JSON.stringify(warnings),
-                sourceJson: JSON.stringify(source),
+                lorebookJson: input.lorebook,
+                warningsJson: warnings,
+                sourceJson: source,
                 createdAt: now,
                 updatedAt: now,
             })
@@ -179,7 +186,7 @@ export class PromptRepository extends RepositoryBase {
             .from(promptModules)
             .where(eq(promptModules.id, id))
             .get()
-        return parseJson(row?.sourceJson || '{}', {})
+        return row?.sourceJson || {}
     }
 
     findPromptModuleByNamespace(namespace: string): PromptModule | null {
@@ -206,13 +213,13 @@ export class PromptRepository extends RepositoryBase {
                 ...(input.luaScript === undefined
                     ? {}
                     : updateLuaColumns(current.luaScript, input.luaScript)),
-                luaRawTriggerJson: JSON.stringify(input.luaRawTriggers ?? current.luaRawTriggers),
+                luaRawTriggerJson: input.luaRawTriggers ?? current.luaRawTriggers,
                 enabledByDefault: input.enabledByDefault,
-                promptsJson: JSON.stringify(input.prompts),
-                togglesJson: JSON.stringify(input.toggles || []),
-                regexScriptsJson: JSON.stringify(input.regexScripts || []),
+                promptsJson: input.prompts,
+                togglesJson: input.toggles || [],
+                regexScriptsJson: input.regexScripts || [],
                 backgroundEmbedding: input.backgroundEmbedding || '',
-                lorebookJson: JSON.stringify(input.lorebook),
+                lorebookJson: input.lorebook,
                 updatedAt: Date.now(),
             })
             .where(eq(promptModules.id, id))
@@ -293,22 +300,14 @@ function mapPromptPreset(row: typeof promptPresets.$inferSelect): PromptPreset {
     return {
         id: row.id,
         name: row.name,
-        blocks: parseJson<PromptBlock[]>(row.blocksJson, []),
-        parameters: parseJson<GenerationParameters>(row.parametersJson, {}),
-        defaultVariables: parseJson(row.defaultVariablesJson, {}),
-        toggles: parseJson(row.togglesJson, []),
-        regexScripts: parseJson(row.regexScriptsJson, []),
-        moduleIntegrations: parseJson(row.moduleIntegrationsJson, []),
-        promptSettings: {
-            assistantPrefill: '',
-            postEndInnerFormat: '',
-            sendChatAsSystem: false,
-            sendName: false,
-            trimStartNewChat: false,
-            groupTemplate: '',
-            ...parseJson(row.promptSettingsJson, {}),
-        },
-        warnings: parseJson(row.warningsJson, []),
+        blocks: row.blocksJson,
+        parameters: row.parametersJson,
+        defaultVariables: row.defaultVariablesJson,
+        toggles: row.togglesJson,
+        regexScripts: row.regexScriptsJson,
+        moduleIntegrations: row.moduleIntegrationsJson,
+        promptSettings: row.promptSettingsJson,
+        warnings: row.warningsJson,
         createdAt: iso(row.createdAt),
         updatedAt: iso(row.updatedAt),
     }
@@ -323,15 +322,15 @@ function mapPromptModule(row: typeof promptModules.$inferSelect): PromptModule {
         sourceId: row.sourceId,
         runtimeOrder: row.runtimeOrder,
         luaScript: mapLuaScript(row),
-        luaRawTriggers: parseJson(row.luaRawTriggerJson, []),
+        luaRawTriggers: row.luaRawTriggerJson,
         enabledByDefault: row.enabledByDefault,
-        prompts: parseJson(row.promptsJson, []),
-        toggles: normalizeModuleToggles(parseJson(row.togglesJson, [])),
-        regexScripts: parseJson(row.regexScriptsJson, []),
+        prompts: row.promptsJson,
+        toggles: normalizeModuleToggles(row.togglesJson),
+        regexScripts: row.regexScriptsJson,
         backgroundEmbedding: row.backgroundEmbedding,
-        lorebook: normalizeLoreEntries(parseJson(row.lorebookJson, [])),
+        lorebook: normalizeLoreEntries(row.lorebookJson),
         assets: [],
-        warnings: parseJson(row.warningsJson, []),
+        warnings: row.warningsJson,
         createdAt: iso(row.createdAt),
         updatedAt: iso(row.updatedAt),
     }

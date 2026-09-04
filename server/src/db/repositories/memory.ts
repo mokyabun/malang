@@ -10,7 +10,7 @@ import { and, asc, eq } from 'drizzle-orm'
 
 import type { DatabaseHandle } from '../db'
 import { conversationMemorySettings, conversationMemorySummaries } from '../schema'
-import { iso, parseJson, RepositoryBase, requireValue } from './base'
+import { iso, RepositoryBase, requireValue } from './base'
 
 export type SparseVector = Record<string, number>
 
@@ -35,7 +35,7 @@ export class MemoryRepository extends RepositoryBase {
         return row
             ? LongTermMemorySettingsSchema.parse({
                   ...defaultSettings(),
-                  ...parseJson(row.settingsJson, {}),
+                  ...row.settingsJson,
               })
             : defaultSettings()
     }
@@ -60,13 +60,13 @@ export class MemoryRepository extends RepositoryBase {
             .insert(conversationMemorySettings)
             .values({
                 conversationId,
-                settingsJson: JSON.stringify(settings),
-                metricsJson: current?.metricsJson || JSON.stringify(defaultMetrics()),
+                settingsJson: settings,
+                metricsJson: current?.metricsJson || defaultMetrics(),
                 updatedAt: Date.now(),
             })
             .onConflictDoUpdate({
                 target: conversationMemorySettings.conversationId,
-                set: { settingsJson: JSON.stringify(settings), updatedAt: Date.now() },
+                set: { settingsJson: settings, updatedAt: Date.now() },
             })
             .run()
         return settings
@@ -81,7 +81,7 @@ export class MemoryRepository extends RepositoryBase {
         return row
             ? LongTermMemoryMetricsSchema.parse({
                   ...defaultMetrics(),
-                  ...parseJson(row.metricsJson, {}),
+                  ...row.metricsJson,
               })
             : defaultMetrics()
     }
@@ -92,13 +92,13 @@ export class MemoryRepository extends RepositoryBase {
             .insert(conversationMemorySettings)
             .values({
                 conversationId,
-                settingsJson: JSON.stringify(settings),
-                metricsJson: JSON.stringify(LongTermMemoryMetricsSchema.parse(metrics)),
+                settingsJson: settings,
+                metricsJson: LongTermMemoryMetricsSchema.parse(metrics),
                 updatedAt: Date.now(),
             })
             .onConflictDoUpdate({
                 target: conversationMemorySettings.conversationId,
-                set: { metricsJson: JSON.stringify(metrics), updatedAt: Date.now() },
+                set: { metricsJson: metrics, updatedAt: Date.now() },
             })
             .run()
     }
@@ -122,8 +122,8 @@ export class MemoryRepository extends RepositoryBase {
                 id: row.id,
                 conversationId: row.conversationId,
                 text: row.text,
-                sourceMessageIds: parseJson<string[]>(row.sourceMessageIdsJson, []),
-                vector: parseJson<SparseVector>(row.vectorJson, {}),
+                sourceMessageIds: row.sourceMessageIdsJson,
+                vector: row.vectorJson,
                 isImportant: row.isImportant,
                 createdAt: iso(row.createdAt),
                 updatedAt: iso(row.updatedAt),
@@ -150,8 +150,8 @@ export class MemoryRepository extends RepositoryBase {
                 id,
                 conversationId: input.conversationId,
                 text: input.text,
-                sourceMessageIdsJson: JSON.stringify(input.sourceMessageIds),
-                vectorJson: JSON.stringify(input.vector),
+                sourceMessageIdsJson: input.sourceMessageIds,
+                vectorJson: input.vector,
                 isImportant: false,
                 createdAt: now,
                 updatedAt: now,
@@ -183,8 +183,7 @@ export class MemoryRepository extends RepositoryBase {
             .update(conversationMemorySummaries)
             .set({
                 text: patch.text ?? current.text,
-                vectorJson:
-                    patch.vector === undefined ? current.vectorJson : JSON.stringify(patch.vector),
+                vectorJson: patch.vector === undefined ? current.vectorJson : patch.vector,
                 isImportant: patch.isImportant ?? current.isImportant,
                 updatedAt: Date.now(),
             })
