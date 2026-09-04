@@ -21,7 +21,7 @@ export class RequestDebugRepository extends RepositoryBase {
             modelId: input.modelId,
             parametersJson: input.parameters,
             requestJson: input.request,
-            createdAt: Date.now(),
+            createdAt: new Date(),
         }
         this.db.insert(requestDebugRecords).values(row).run()
         this.sqlite

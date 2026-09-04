@@ -20,7 +20,7 @@ export class ModelApiKeyRepository extends RepositoryBase {
     }
 
     create(input: ModelApiKeyRecordInput) {
-        const now = Date.now()
+        const now = new Date()
         const row = { id: crypto.randomUUID(), ...input, createdAt: now, updatedAt: now }
         this.db.insert(modelApiKeys).values(row).run()
         return requireValue(this.get(row.id), 'Failed to create API key')
@@ -30,7 +30,7 @@ export class ModelApiKeyRepository extends RepositoryBase {
         if (!this.get(id)) return null
         this.db
             .update(modelApiKeys)
-            .set({ ...input, updatedAt: Date.now() })
+            .set({ ...input })
             .where(eq(modelApiKeys.id, id))
             .run()
         return this.get(id)

@@ -21,7 +21,7 @@ export class PromptPresetRepository extends RepositoryBase {
         warnings: string[] = [],
     ): PromptPreset {
         const id = crypto.randomUUID()
-        const now = Date.now()
+        const now = new Date()
         this.db
             .insert(promptPresets)
             .values({
@@ -56,7 +56,6 @@ export class PromptPresetRepository extends RepositoryBase {
                 regexScriptsJson: input.regexScripts || [],
                 moduleIntegrationsJson: input.moduleIntegrations || [],
                 promptSettingsJson: { ...defaultPromptSettings, ...input.promptSettings },
-                updatedAt: Date.now(),
             })
             .where(eq(promptPresets.id, id))
             .run()

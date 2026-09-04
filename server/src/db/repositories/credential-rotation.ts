@@ -10,16 +10,11 @@ export class CredentialRotationRepository extends RepositoryBase {
         secretSalt: string,
         providerSecret: string | null,
     ): void {
-        const now = Date.now()
         this.sqlite.transaction(() => {
-            this.db
-                .update(adminUsers)
-                .set({ passwordHash, updatedAt: now })
-                .where(eq(adminUsers.id, adminId))
-                .run()
+            this.db.update(adminUsers).set({ passwordHash }).where(eq(adminUsers.id, adminId)).run()
             this.db
                 .update(appSettings)
-                .set({ secretSalt, providerSecretJson: providerSecret, updatedAt: now })
+                .set({ secretSalt, providerSecretJson: providerSecret })
                 .where(eq(appSettings.id, 1))
                 .run()
             this.db.delete(sessions).where(eq(sessions.adminId, adminId)).run()

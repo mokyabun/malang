@@ -32,7 +32,7 @@ export class MessageRepository extends RepositoryBase {
             .from(messages)
             .where(eq(messages.conversationId, conversationId))
             .get()
-        const now = Date.now()
+        const now = new Date()
         const row = {
             id: crypto.randomUUID(),
             conversationId,
@@ -56,7 +56,6 @@ export class MessageRepository extends RepositoryBase {
             .set({
                 content: update.content ?? current.content,
                 status: update.status ?? current.status,
-                updatedAt: Date.now(),
             })
             .where(eq(messages.id, id))
             .run()
@@ -91,7 +90,7 @@ export class MessageRepository extends RepositoryBase {
             status?: Message['status']
         }>,
     ): Message[] {
-        const now = Date.now()
+        const now = new Date()
         const existing = new Map(this.list(conversationId).map((message) => [message.id, message]))
         const rows = next.map((message, position) => ({
             id: message.id && existing.has(message.id) ? message.id : crypto.randomUUID(),
@@ -102,7 +101,7 @@ export class MessageRepository extends RepositoryBase {
             status: message.status ?? 'complete',
             createdAt:
                 message.id && existing.get(message.id)?.createdAt
-                    ? Date.parse(existing.get(message.id)!.createdAt)
+                    ? new Date(existing.get(message.id)!.createdAt)
                     : now,
             updatedAt: now,
         }))
@@ -126,7 +125,6 @@ export class MessageRepository extends RepositoryBase {
                             content: row.content,
                             position: row.position,
                             status: row.status,
-                            updatedAt: now,
                         })
                         .where(eq(messages.id, row.id))
                         .run()
@@ -159,7 +157,7 @@ export class MessageRepository extends RepositoryBase {
     bumpDisplayEpoch(conversationId: string): void {
         this.db
             .update(conversations)
-            .set({ displayEpoch: sql`${conversations.displayEpoch} + 1`, updatedAt: Date.now() })
+            .set({ displayEpoch: sql`${conversations.displayEpoch} + 1` })
             .where(eq(conversations.id, conversationId))
             .run()
     }

@@ -33,12 +33,11 @@ export class ConversationOrganizationRepository extends RepositoryBase {
             return false
         }
 
-        const now = Date.now()
         this.sqlite.transaction(() => {
             for (const group of input.groups) {
                 this.db
                     .update(conversationGroups)
-                    .set({ sortOrder: group.sortOrder, updatedAt: now })
+                    .set({ sortOrder: group.sortOrder })
                     .where(eq(conversationGroups.id, group.id))
                     .run()
             }

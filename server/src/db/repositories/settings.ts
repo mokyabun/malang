@@ -19,7 +19,7 @@ export class SettingsRepository extends RepositoryBase {
                 defaultAuxiliaryModelPresetId: null,
                 selectedPersonaId: null,
                 providerJson: null,
-                updatedAt: Date.now(),
+                updatedAt: new Date(),
             })
             .run()
     }
@@ -62,7 +62,6 @@ export class SettingsRepository extends RepositoryBase {
                 autoBackupEnabled: next.autoBackupEnabled,
                 jailbreakToggle: next.jailbreakToggle,
                 chainOfThought: next.chainOfThought,
-                updatedAt: Date.now(),
             })
             .where(eq(appSettings.id, 1))
             .run()

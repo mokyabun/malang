@@ -22,10 +22,10 @@ export class ModelChainMemoryRepository extends RepositoryBase {
     set(conversationId: string, agentId: string, content: string): void {
         this.db
             .insert(modelChainAgentMemories)
-            .values({ conversationId, agentId, content, updatedAt: Date.now() })
+            .values({ conversationId, agentId, content, updatedAt: new Date() })
             .onConflictDoUpdate({
                 target: [modelChainAgentMemories.conversationId, modelChainAgentMemories.agentId],
-                set: { content, updatedAt: Date.now() },
+                set: { content },
             })
             .run()
     }

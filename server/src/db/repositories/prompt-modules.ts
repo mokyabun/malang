@@ -12,7 +12,7 @@ export class PromptModuleRepository extends RepositoryBase {
         warnings: string[] = [],
     ): PromptModule {
         const id = crypto.randomUUID()
-        const now = Date.now()
+        const now = new Date()
         this.db
             .insert(promptModules)
             .values({
@@ -93,7 +93,6 @@ export class PromptModuleRepository extends RepositoryBase {
                 regexScriptsJson: input.regexScripts || [],
                 backgroundEmbedding: input.backgroundEmbedding || '',
                 lorebookJson: input.lorebook,
-                updatedAt: Date.now(),
             })
             .where(eq(promptModules.id, id))
             .run()

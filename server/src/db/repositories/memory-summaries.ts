@@ -40,7 +40,7 @@ export class MemorySummaryRepository extends RepositoryBase {
         sourceMessageIds: string[]
         vector: SparseVector
     }): LongTermMemorySummary {
-        const now = Date.now()
+        const now = new Date()
         const id = crypto.randomUUID()
         this.db
             .insert(conversationMemorySummaries)
@@ -83,7 +83,6 @@ export class MemorySummaryRepository extends RepositoryBase {
                 text: patch.text ?? current.text,
                 vectorJson: patch.vector === undefined ? current.vectorJson : patch.vector,
                 isImportant: patch.isImportant ?? current.isImportant,
-                updatedAt: Date.now(),
             })
             .where(eq(conversationMemorySummaries.id, summaryId))
             .run()

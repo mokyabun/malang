@@ -15,6 +15,7 @@ import type {
     RegexScript,
     RequestDebugSnapshot,
 } from '@malang/shared'
+import { sql } from 'drizzle-orm'
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 type JsonObject = Record<string, unknown>
@@ -26,9 +27,20 @@ type ModelChainConfig = {
 }
 type SparseVector = Record<string, number>
 
+const timestampMs = (name: string) => integer(name, { mode: 'timestamp_ms' })
+const createdAt = () =>
+    timestampMs('created_at')
+        .notNull()
+        .default(sql`(unixepoch('subsecond') * 1000)`)
+const updatedAt = () =>
+    timestampMs('updated_at')
+        .notNull()
+        .default(sql`(unixepoch('subsecond') * 1000)`)
+        .$onUpdate(() => new Date())
+
 const timestampColumns = {
-    createdAt: integer('created_at').notNull(),
-    updatedAt: integer('updated_at').notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
 }
 
 export const adminUsers = sqliteTable('admin_users', {
@@ -45,8 +57,8 @@ export const sessions = sqliteTable(
             .notNull()
             .references(() => adminUsers.id, { onDelete: 'cascade' }),
         tokenHash: text('token_hash').notNull(),
-        expiresAt: integer('expires_at').notNull(),
-        createdAt: integer('created_at').notNull(),
+        expiresAt: timestampMs('expires_at').notNull(),
+        createdAt: createdAt(),
     },
     (table) => [uniqueIndex('sessions_token_hash_idx').on(table.tokenHash)],
 )
@@ -78,7 +90,7 @@ export const appSettings = sqliteTable('app_settings', {
     secretSalt: text('secret_salt'),
     /** Encrypted envelope owned by SecretVault; intentionally opaque to Drizzle's JSON mapper. */
     providerSecretJson: text('provider_secret_json'),
-    updatedAt: integer('updated_at').notNull(),
+    updatedAt: updatedAt(),
 })
 
 export const modelApiKeys = sqliteTable('model_api_keys', {
@@ -118,7 +130,7 @@ export const assets = sqliteTable(
         mimeType: text('mime_type').notNull(),
         size: integer('size').notNull(),
         path: text('path').notNull(),
-        createdAt: integer('created_at').notNull(),
+        createdAt: createdAt(),
     },
     (table) => [uniqueIndex('assets_sha256_idx').on(table.sha256)],
 )
@@ -178,7 +190,7 @@ export const characters = sqliteTable('characters', {
         .default([]),
     groupId: text('group_id').references(() => characterGroups.id, { onDelete: 'set null' }),
     sortOrder: integer('sort_order').notNull().default(0),
-    archivedAt: integer('archived_at'),
+    archivedAt: timestampMs('archived_at'),
     ...timestampColumns,
 })
 
@@ -353,7 +365,7 @@ export const conversations = sqliteTable('conversations', {
     personaLocked: integer('persona_locked', { mode: 'boolean' }).notNull().default(false),
     groupId: text('group_id').references(() => conversationGroups.id, { onDelete: 'set null' }),
     sortOrder: integer('sort_order').notNull().default(0),
-    archivedAt: integer('archived_at'),
+    archivedAt: timestampMs('archived_at'),
     displayEpoch: integer('display_epoch').notNull().default(0),
     ...timestampColumns,
 })
@@ -406,7 +418,7 @@ export const conversationMemorySettings = sqliteTable('conversation_memory_setti
             similarSummaryIds: [],
             randomSummaryIds: [],
         }),
-    updatedAt: integer('updated_at').notNull(),
+    updatedAt: updatedAt(),
 })
 
 export const conversationMemorySummaries = sqliteTable(
@@ -440,7 +452,7 @@ export const modelChainAgentMemories = sqliteTable(
             .references(() => conversations.id, { onDelete: 'cascade' }),
         agentId: text('agent_id').notNull(),
         content: text('content').notNull().default(''),
-        updatedAt: integer('updated_at').notNull(),
+        updatedAt: updatedAt(),
     },
     (table) => [primaryKey({ columns: [table.conversationId, table.agentId] })],
 )
@@ -466,8 +478,8 @@ export const generationRuns = sqliteTable(
         outputTokens: integer('output_tokens'),
         errorCode: text('error_code'),
         errorMessage: text('error_message'),
-        startedAt: integer('started_at').notNull(),
-        completedAt: integer('completed_at'),
+        startedAt: timestampMs('started_at').notNull(),
+        completedAt: timestampMs('completed_at'),
     },
     (table) => [
         uniqueIndex('generation_idempotency_idx').on(table.conversationId, table.idempotencyKey),
@@ -488,7 +500,7 @@ export const requestDebugRecords = sqliteTable('request_debug_records', {
         .$type<GenerationParameters>()
         .notNull(),
     requestJson: text('request_json', { mode: 'json' }).$type<RequestDebugSnapshot>().notNull(),
-    createdAt: integer('created_at').notNull(),
+    createdAt: createdAt(),
 })
 
 export const luaStates = sqliteTable(
@@ -502,7 +514,7 @@ export const luaStates = sqliteTable(
         stateKey: text('state_key').notNull(),
         valueJson: text('value_json', { mode: 'json' }).$type<unknown>().notNull(),
         version: integer('version').notNull().default(1),
-        updatedAt: integer('updated_at').notNull(),
+        updatedAt: updatedAt(),
     },
     (table) => [
         primaryKey({
@@ -525,8 +537,8 @@ export const luaEventRuns = sqliteTable(
         inputJson: text('input_json', { mode: 'json' }).$type<JsonObject>().notNull().default({}),
         resultJson: text('result_json', { mode: 'json' }).$type<unknown>(),
         errorJson: text('error_json', { mode: 'json' }).$type<JsonObject>(),
-        createdAt: integer('created_at').notNull(),
-        completedAt: integer('completed_at'),
+        createdAt: createdAt(),
+        completedAt: timestampMs('completed_at'),
     },
     (table) => [
         uniqueIndex('lua_event_runs_unique_idx').on(
@@ -555,8 +567,8 @@ export const luaInvocations = sqliteTable(
             .notNull()
             .default([]),
         errorJson: text('error_json', { mode: 'json' }).$type<JsonObject>(),
-        createdAt: integer('created_at').notNull(),
-        completedAt: integer('completed_at'),
+        createdAt: createdAt(),
+        completedAt: timestampMs('completed_at'),
     },
     (table) => [
         uniqueIndex('lua_invocations_unique_idx').on(
@@ -586,8 +598,8 @@ export const luaApiCalls = sqliteTable(
             .default({}),
         resultJson: text('result_json', { mode: 'json' }).$type<unknown>(),
         errorJson: text('error_json', { mode: 'json' }).$type<JsonObject>(),
-        createdAt: integer('created_at').notNull(),
-        completedAt: integer('completed_at'),
+        createdAt: createdAt(),
+        completedAt: timestampMs('completed_at'),
     },
     (table) => [uniqueIndex('lua_api_calls_unique_idx').on(table.invocationId, table.callIndex)],
 )
@@ -606,9 +618,9 @@ export const luaRemoteCommands = sqliteTable(
         resultJson: text('result_json', { mode: 'json' }).$type<unknown>(),
         status: text('status', { enum: ['pending', 'complete', 'failed', 'expired'] }).notNull(),
         blocking: integer('blocking', { mode: 'boolean' }).notNull().default(false),
-        expiresAt: integer('expires_at').notNull(),
-        createdAt: integer('created_at').notNull(),
-        completedAt: integer('completed_at'),
+        expiresAt: timestampMs('expires_at').notNull(),
+        createdAt: createdAt(),
+        completedAt: timestampMs('completed_at'),
     },
     (table) => [
         uniqueIndex('lua_remote_commands_unique_idx').on(table.invocationId, table.callIndex),
@@ -626,8 +638,8 @@ export const luaDisplayBatches = sqliteTable(
         status: text('status', { enum: ['running', 'complete', 'failed'] }).notNull(),
         resultJson: text('result_json', { mode: 'json' }).$type<unknown>(),
         errorJson: text('error_json', { mode: 'json' }).$type<JsonObject>(),
-        createdAt: integer('created_at').notNull(),
-        completedAt: integer('completed_at'),
+        createdAt: createdAt(),
+        completedAt: timestampMs('completed_at'),
     },
     (table) => [
         primaryKey({ columns: [table.conversationId, table.displayEpoch, table.scriptSetHash] }),
@@ -643,7 +655,7 @@ export const conversationLoreEntries = sqliteTable(
             .references(() => conversations.id, { onDelete: 'cascade' }),
         name: text('name').notNull(),
         entryJson: text('entry_json', { mode: 'json' }).$type<LoreEntry>().notNull(),
-        updatedAt: integer('updated_at').notNull(),
+        updatedAt: updatedAt(),
     },
     (table) => [
         uniqueIndex('conversation_lore_entries_name_idx').on(table.conversationId, table.name),

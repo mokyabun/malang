@@ -84,7 +84,7 @@ export class GenerationRepository extends RepositoryBase {
                 parametersJson: input.parameters,
                 outputText: '',
                 processedOutputText: '',
-                startedAt: Date.now(),
+                startedAt: new Date(),
             })
             .run()
     }
@@ -107,7 +107,7 @@ export class GenerationRepository extends RepositoryBase {
     ): void {
         this.db
             .update(generationRuns)
-            .set({ ...update, completedAt: Date.now() })
+            .set({ ...update, completedAt: new Date() })
             .where(eq(generationRuns.id, id))
             .run()
     }

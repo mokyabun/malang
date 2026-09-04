@@ -17,7 +17,7 @@ export class AssetRepository extends RepositoryBase {
         if (existing) return existing
         this.db
             .insert(assets)
-            .values({ ...asset, createdAt: Date.now() })
+            .values({ ...asset, createdAt: new Date() })
             .run()
         return asset
     }

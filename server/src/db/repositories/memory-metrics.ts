@@ -36,11 +36,11 @@ export class MemoryMetricsRepository extends RepositoryBase {
                 conversationId,
                 settingsJson: this.settings.get(conversationId),
                 metricsJson: LongTermMemoryMetricsSchema.parse(metrics),
-                updatedAt: Date.now(),
+                updatedAt: new Date(),
             })
             .onConflictDoUpdate({
                 target: conversationMemorySettings.conversationId,
-                set: { metricsJson: metrics, updatedAt: Date.now() },
+                set: { metricsJson: metrics },
             })
             .run()
     }

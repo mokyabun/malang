@@ -36,7 +36,7 @@ export class ConversationGroupRepository extends RepositoryBase {
 
     create(characterId: string, name: string): ConversationGroup | null {
         if (!this.character.get(characterId)) return null
-        const now = Date.now()
+        const now = new Date()
         const id = crypto.randomUUID()
         this.db
             .insert(conversationGroups)
@@ -59,11 +59,7 @@ export class ConversationGroupRepository extends RepositoryBase {
             .where(eq(conversationGroups.id, id))
             .get()
         if (!existing) return null
-        this.db
-            .update(conversationGroups)
-            .set({ name, updatedAt: Date.now() })
-            .where(eq(conversationGroups.id, id))
-            .run()
+        this.db.update(conversationGroups).set({ name }).where(eq(conversationGroups.id, id)).run()
         return this.list(existing.characterId).find((group) => group.id === id) ?? null
     }
 

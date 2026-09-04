@@ -18,11 +18,11 @@ export abstract class RepositoryBase {
     }
 }
 
-export function iso(value: number): string
+export function iso(value: Date): string
 export function iso(value: null): null
-export function iso(value: number | null): string | null
-export function iso(value: number | null): string | null {
-    return value === null ? null : new Date(value).toISOString()
+export function iso(value: Date | null): string | null
+export function iso(value: Date | null): string | null {
+    return value?.toISOString() ?? null
 }
 
 export function requireValue<T>(value: T | null | undefined, message: string): T {

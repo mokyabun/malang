@@ -28,18 +28,14 @@ export class SecretStorageRepository extends RepositoryBase {
 
     setSalt(salt: string): void {
         this.settings.ensure()
-        this.db
-            .update(appSettings)
-            .set({ secretSalt: salt, updatedAt: Date.now() })
-            .where(eq(appSettings.id, 1))
-            .run()
+        this.db.update(appSettings).set({ secretSalt: salt }).where(eq(appSettings.id, 1)).run()
     }
 
     setSecret(providerSecret: string | null): void {
         this.settings.ensure()
         this.db
             .update(appSettings)
-            .set({ providerSecretJson: providerSecret, updatedAt: Date.now() })
+            .set({ providerSecretJson: providerSecret })
             .where(eq(appSettings.id, 1))
             .run()
     }

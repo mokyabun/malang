@@ -28,7 +28,7 @@ export class ProviderRepository extends RepositoryBase {
         this.settings.ensure()
         this.db
             .update(appSettings)
-            .set({ providerJson: provider, updatedAt: Date.now() })
+            .set({ providerJson: provider })
             .where(eq(appSettings.id, 1))
             .run()
         return provider

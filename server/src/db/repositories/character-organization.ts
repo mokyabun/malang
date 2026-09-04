@@ -23,12 +23,12 @@ export class CharacterOrganizationRepository extends RepositoryBase {
             return false
         }
 
-        const now = Date.now()
+        const now = new Date()
         this.sqlite.transaction(() => {
             for (const group of input.groups) {
                 this.db
                     .update(characterGroups)
-                    .set({ sortOrder: group.sortOrder, updatedAt: now })
+                    .set({ sortOrder: group.sortOrder })
                     .where(eq(characterGroups.id, group.id))
                     .run()
             }

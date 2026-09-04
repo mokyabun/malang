@@ -29,7 +29,7 @@ export class ModelPresetRepository extends RepositoryBase {
     }
 
     create(input: ModelPresetInput): ModelPreset {
-        const now = Date.now()
+        const now = new Date()
         const id = crypto.randomUUID()
         const last = this.db
             .select({ value: max(modelPresets.sortOrder) })
@@ -58,7 +58,6 @@ export class ModelPresetRepository extends RepositoryBase {
                 name: input.name,
                 providerJson: input.config,
                 apiKeyId: input.apiKeyId,
-                updatedAt: Date.now(),
             })
             .where(eq(modelPresets.id, id))
             .run()

@@ -74,7 +74,7 @@ export class CharacterRepository extends RepositoryBase {
             if (existing.archivedAt) {
                 this.db
                     .update(characters)
-                    .set({ archivedAt: null, updatedAt: Date.now() })
+                    .set({ archivedAt: null })
                     .where(eq(characters.id, GENERAL_CHAT_CHARACTER_ID))
                     .run()
                 return requireValue(
@@ -137,7 +137,7 @@ export class CharacterRepository extends RepositoryBase {
     }
 
     create(input: NewCharacterRecord, linkedAssets: CharacterAssetRecord[]): CharacterRecord {
-        const now = Date.now()
+        const now = new Date()
         const sortOrder = this.organization.nextRootOrder()
         this.db.transaction((tx) => {
             tx.insert(characters)
@@ -219,7 +219,7 @@ export class CharacterRepository extends RepositoryBase {
         if (id === GENERAL_CHAT_CHARACTER_ID) return null
         const current = this.get(id)
         if (!current) return null
-        const patch: Partial<typeof characters.$inferInsert> = { updatedAt: Date.now() }
+        const patch: Partial<typeof characters.$inferInsert> = {}
         if (update.name !== undefined) patch.name = update.name
         if (update.description !== undefined) patch.description = update.description
         if (update.personality !== undefined) patch.personality = update.personality
@@ -296,7 +296,7 @@ export class CharacterRepository extends RepositoryBase {
         if (!this.get(id)) return false
         this.db
             .update(characters)
-            .set({ archivedAt: Date.now(), updatedAt: Date.now() })
+            .set({ archivedAt: new Date() })
             .where(eq(characters.id, id))
             .run()
         return true
@@ -315,11 +315,7 @@ export class CharacterRepository extends RepositoryBase {
     restore(id: string): boolean {
         const character = this.get(id)
         if (!character) return false
-        this.db
-            .update(characters)
-            .set({ archivedAt: null, updatedAt: Date.now() })
-            .where(eq(characters.id, id))
-            .run()
+        this.db.update(characters).set({ archivedAt: null }).where(eq(characters.id, id)).run()
         return true
     }
 
@@ -328,7 +324,7 @@ export class CharacterRepository extends RepositoryBase {
         if (!this.get(id)) return null
         this.db
             .update(characters)
-            .set({ avatarAssetId: assetId, updatedAt: Date.now() })
+            .set({ avatarAssetId: assetId })
             .where(eq(characters.id, id))
             .run()
         return this.get(id)

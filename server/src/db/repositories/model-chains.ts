@@ -35,7 +35,7 @@ export class ModelChainRepository extends RepositoryBase {
     }
 
     create(input: ModelChainPresetInput): ModelChainPreset {
-        const now = Date.now()
+        const now = new Date()
         const id = crypto.randomUUID()
         const last = this.db
             .select({ value: max(modelChainPresets.sortOrder) })
@@ -64,7 +64,6 @@ export class ModelChainRepository extends RepositoryBase {
                 name: input.name,
                 description: input.description,
                 configJson: chainConfig(input),
-                updatedAt: Date.now(),
             })
             .where(eq(modelChainPresets.id, id))
             .run()

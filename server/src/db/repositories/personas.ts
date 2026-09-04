@@ -20,7 +20,7 @@ export class PersonaRepository extends RepositoryBase {
     }
 
     create(input: PersonaCreate): Persona {
-        const now = Date.now()
+        const now = new Date()
         const row = {
             id: crypto.randomUUID(),
             name: input.name,
@@ -43,7 +43,6 @@ export class PersonaRepository extends RepositoryBase {
                 name: update.name ?? current.name,
                 description: update.description ?? current.description,
                 note: update.note ?? current.note,
-                updatedAt: Date.now(),
             })
             .where(eq(personas.id, id))
             .run()
@@ -54,7 +53,7 @@ export class PersonaRepository extends RepositoryBase {
         if (!this.get(id)) return false
         this.db
             .update(conversations)
-            .set({ personaLocked: false, updatedAt: Date.now() })
+            .set({ personaLocked: false })
             .where(eq(conversations.boundPersonaId, id))
             .run()
         this.db.delete(personas).where(eq(personas.id, id)).run()
@@ -64,11 +63,7 @@ export class PersonaRepository extends RepositoryBase {
     setAvatar(id: string, assetId: string | null): Persona | null {
         const current = this.get(id)
         if (!current) return null
-        this.db
-            .update(personas)
-            .set({ avatarAssetId: assetId, updatedAt: Date.now() })
-            .where(eq(personas.id, id))
-            .run()
+        this.db.update(personas).set({ avatarAssetId: assetId }).where(eq(personas.id, id)).run()
         return this.get(id)
     }
 }

@@ -1,8 +1,8 @@
 CREATE TABLE `admin_users` (
 	`id` text PRIMARY KEY NOT NULL,
 	`password_hash` text NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `app_settings` (
@@ -21,7 +21,7 @@ CREATE TABLE `app_settings` (
 	`auto_backup_enabled` integer DEFAULT true NOT NULL,
 	`secret_salt` text,
 	`provider_secret_json` text,
-	`updated_at` integer NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`selected_persona_id`) REFERENCES `personas`(`id`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
@@ -31,7 +31,7 @@ CREATE TABLE `assets` (
 	`mime_type` text NOT NULL,
 	`size` integer NOT NULL,
 	`path` text NOT NULL,
-	`created_at` integer NOT NULL
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `assets_sha256_idx` ON `assets` (`sha256`);--> statement-breakpoint
@@ -51,8 +51,8 @@ CREATE TABLE `character_groups` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`sort_order` integer NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `character_lore_entries` (
@@ -104,8 +104,8 @@ CREATE TABLE `characters` (
 	`group_id` text,
 	`sort_order` integer DEFAULT 0 NOT NULL,
 	`archived_at` integer,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`avatar_asset_id`) REFERENCES `assets`(`id`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (`group_id`) REFERENCES `character_groups`(`id`) ON UPDATE no action ON DELETE set null
 );
@@ -115,8 +115,8 @@ CREATE TABLE `conversation_groups` (
 	`character_id` text NOT NULL,
 	`name` text NOT NULL,
 	`sort_order` integer NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -125,7 +125,7 @@ CREATE TABLE `conversation_lore_entries` (
 	`conversation_id` text NOT NULL,
 	`name` text NOT NULL,
 	`entry_json` text NOT NULL,
-	`updated_at` integer NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -134,7 +134,7 @@ CREATE TABLE `conversation_memory_settings` (
 	`conversation_id` text PRIMARY KEY NOT NULL,
 	`settings_json` text NOT NULL,
 	`metrics_json` text DEFAULT '{}' NOT NULL,
-	`updated_at` integer NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -145,8 +145,8 @@ CREATE TABLE `conversation_memory_summaries` (
 	`source_message_ids_json` text NOT NULL,
 	`vector_json` text NOT NULL,
 	`is_important` integer DEFAULT false NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -178,8 +178,8 @@ CREATE TABLE `conversations` (
 	`sort_order` integer DEFAULT 0 NOT NULL,
 	`archived_at` integer,
 	`display_epoch` integer DEFAULT 0 NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`prompt_preset_id`) REFERENCES `prompt_presets`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`model_chain_preset_id`) REFERENCES `model_chain_presets`(`id`) ON UPDATE no action ON DELETE restrict,
@@ -218,7 +218,7 @@ CREATE TABLE `lua_api_calls` (
 	`request_json` text DEFAULT '{}' NOT NULL,
 	`result_json` text,
 	`error_json` text,
-	`created_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	`completed_at` integer,
 	FOREIGN KEY (`invocation_id`) REFERENCES `lua_invocations`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -231,7 +231,7 @@ CREATE TABLE `lua_display_batches` (
 	`status` text NOT NULL CHECK (`status` IN ('running', 'complete', 'failed')),
 	`result_json` text,
 	`error_json` text,
-	`created_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	`completed_at` integer,
 	PRIMARY KEY(`conversation_id`, `display_epoch`, `script_set_hash`),
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
@@ -247,7 +247,7 @@ CREATE TABLE `lua_event_runs` (
 	`input_json` text DEFAULT '{}' NOT NULL,
 	`result_json` text,
 	`error_json` text,
-	`created_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	`completed_at` integer,
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -264,7 +264,7 @@ CREATE TABLE `lua_invocations` (
 	`result_json` text,
 	`warnings_json` text DEFAULT '[]' NOT NULL,
 	`error_json` text,
-	`created_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	`completed_at` integer,
 	FOREIGN KEY (`event_run_id`) REFERENCES `lua_event_runs`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -281,7 +281,7 @@ CREATE TABLE `lua_remote_commands` (
 	`status` text NOT NULL CHECK (`status` IN ('pending', 'complete', 'failed', 'expired')),
 	`blocking` integer DEFAULT false NOT NULL,
 	`expires_at` integer NOT NULL,
-	`created_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	`completed_at` integer,
 	FOREIGN KEY (`invocation_id`) REFERENCES `lua_invocations`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -294,7 +294,7 @@ CREATE TABLE `lua_states` (
 	`state_key` text NOT NULL,
 	`value_json` text NOT NULL,
 	`version` integer DEFAULT 1 NOT NULL,
-	`updated_at` integer NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	PRIMARY KEY(`conversation_id`, `owner_type`, `owner_id`, `state_key`),
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -306,8 +306,8 @@ CREATE TABLE `messages` (
 	`content` text NOT NULL,
 	`position` integer NOT NULL,
 	`status` text NOT NULL CHECK (`status` IN ('complete', 'streaming', 'cancelled', 'failed')),
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -318,15 +318,15 @@ CREATE TABLE `model_api_keys` (
 	`provider` text NOT NULL,
 	`credential_type` text NOT NULL CHECK (`credential_type` IN ('apiKey', 'serviceAccount', 'aws')),
 	`hint` text DEFAULT '' NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `model_chain_agent_memories` (
 	`conversation_id` text NOT NULL,
 	`agent_id` text NOT NULL,
 	`content` text DEFAULT '' NOT NULL,
-	`updated_at` integer NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	PRIMARY KEY(`conversation_id`, `agent_id`),
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -337,8 +337,8 @@ CREATE TABLE `model_chain_presets` (
 	`description` text DEFAULT '' NOT NULL,
 	`config_json` text NOT NULL,
 	`sort_order` integer DEFAULT 0 NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `model_presets` (
@@ -347,8 +347,8 @@ CREATE TABLE `model_presets` (
 	`provider_json` text NOT NULL,
 	`api_key_id` text,
 	`sort_order` integer DEFAULT 0 NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`api_key_id`) REFERENCES `model_api_keys`(`id`) ON UPDATE no action ON DELETE restrict
 );
 --> statement-breakpoint
@@ -358,8 +358,8 @@ CREATE TABLE `personas` (
 	`description` text NOT NULL,
 	`note` text DEFAULT '' NOT NULL,
 	`avatar_asset_id` text,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`avatar_asset_id`) REFERENCES `assets`(`id`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
@@ -396,8 +396,8 @@ CREATE TABLE `prompt_modules` (
 	`lorebook_json` text DEFAULT '[]' NOT NULL,
 	`warnings_json` text NOT NULL,
 	`source_json` text NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `prompt_presets` (
@@ -412,8 +412,8 @@ CREATE TABLE `prompt_presets` (
 	`prompt_settings_json` text DEFAULT '{}' NOT NULL,
 	`warnings_json` text NOT NULL,
 	`source_json` text NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `request_debug_records` (
@@ -424,7 +424,7 @@ CREATE TABLE `request_debug_records` (
 	`model_id` text NOT NULL,
 	`parameters_json` text NOT NULL,
 	`request_json` text NOT NULL,
-	`created_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`generation_id`) REFERENCES `generation_runs`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -434,7 +434,7 @@ CREATE TABLE `sessions` (
 	`admin_id` text NOT NULL,
 	`token_hash` text NOT NULL,
 	`expires_at` integer NOT NULL,
-	`created_at` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsecond') * 1000) NOT NULL,
 	FOREIGN KEY (`admin_id`) REFERENCES `admin_users`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint

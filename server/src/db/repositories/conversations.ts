@@ -31,7 +31,7 @@ export class ConversationRepository extends RepositoryBase {
             : this.promptPreset.ensureDefault()
         if (!prompt) throw new Error('Prompt preset not found')
         const id = crypto.randomUUID()
-        const now = Date.now()
+        const now = new Date()
         const defaultTitle = `Chat ${
             this.db
                 .select({ id: conversations.id })
@@ -140,7 +140,6 @@ export class ConversationRepository extends RepositoryBase {
                     update.personaLocked === undefined
                         ? current.displayEpoch
                         : current.displayEpoch + 1,
-                updatedAt: Date.now(),
             })
             .where(eq(conversations.id, id))
             .run()
@@ -151,7 +150,7 @@ export class ConversationRepository extends RepositoryBase {
         if (!this.get(id)) return false
         this.db
             .update(conversations)
-            .set({ archivedAt: Date.now(), updatedAt: Date.now() })
+            .set({ archivedAt: new Date() })
             .where(eq(conversations.id, id))
             .run()
         return true
@@ -167,7 +166,7 @@ export class ConversationRepository extends RepositoryBase {
         if (!this.get(id)) return false
         this.db
             .update(conversations)
-            .set({ archivedAt: null, updatedAt: Date.now() })
+            .set({ archivedAt: null })
             .where(eq(conversations.id, id))
             .run()
         return true
@@ -186,7 +185,7 @@ export class ConversationRepository extends RepositoryBase {
         this.sqlite.transaction(() => {
             this.db
                 .update(conversations)
-                .set({ greetingIndex, updatedAt: Date.now() })
+                .set({ greetingIndex })
                 .where(eq(conversations.id, id))
                 .run()
             const first = this.db
@@ -199,7 +198,7 @@ export class ConversationRepository extends RepositoryBase {
             if (first) {
                 this.db
                     .update(messages)
-                    .set({ content: greeting, updatedAt: Date.now() })
+                    .set({ content: greeting })
                     .where(eq(messages.id, first.id))
                     .run()
             } else if (greeting) {
