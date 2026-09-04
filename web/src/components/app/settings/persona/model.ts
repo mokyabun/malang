@@ -13,7 +13,9 @@ export function blankPersonaDraft(): PersonaCreate {
 }
 
 export function personaLabel(persona: Persona): string {
-    return persona.name || '이름 없는 페르소나'
+    const name = persona.name || '이름 없는 페르소나'
+    const note = persona.note.trim()
+    return note ? `${name} (${note})` : name
 }
 
 export function isPersonaDraftDirty(draft: PersonaUpdate, persona: Persona): boolean {

@@ -19,7 +19,7 @@ export function PersonaAvatar({
     return (
         <span
             className={cn(
-                'grid overflow-hidden place-items-center rounded-md bg-secondary font-serif text-xs font-semibold text-secondary-foreground [&_img]:size-full [&_img]:object-cover',
+                'avatar grid size-full place-items-center overflow-hidden rounded-md bg-secondary font-serif text-xs font-semibold text-secondary-foreground [&_img]:size-full [&_img]:object-cover',
                 className,
             )}
         >

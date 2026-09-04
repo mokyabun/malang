@@ -38,13 +38,7 @@ export function SettingsContent({ section, ...props }: SettingsPanelProps) {
                 />
             )
         case 'persona':
-            return (
-                <PersonaSection
-                    settings={props.settings}
-                    presets={props.presets}
-                    onSettingsChange={props.onSettingsChange}
-                />
-            )
+            return <PersonaSection onSettingsChange={props.onSettingsChange} />
         case 'debug':
             return (
                 <RequestDebugSection

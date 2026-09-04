@@ -1,5 +1,5 @@
 import type { Persona } from '@malang/shared'
-import { Star, Trash, UploadSimple } from '@phosphor-icons/react'
+import { Trash, UploadSimple } from '@phosphor-icons/react'
 import { useSetAtom } from 'jotai'
 import { type ChangeEvent, useState } from 'react'
 
@@ -15,13 +15,9 @@ import { PersonaAvatar } from './persona-avatar'
 
 export function PersonaDetailForm({
     persona,
-    isActive,
-    onSetActive,
     onDelete,
 }: {
     persona: Persona
-    isActive: boolean
-    onSetActive: () => void
     onDelete: () => void
 }) {
     const [draft, setDraft] = useState(() => personaDraftFrom(persona))
@@ -52,22 +48,25 @@ export function PersonaDetailForm({
             className="grid gap-4 rounded-md border border-border bg-background/25 p-4"
             onBlurCapture={() => void autoSave.flush()}
         >
-            <div className="flex flex-wrap items-center gap-3 [&_.avatar]:size-16 [&>label]:min-h-9 [&>label]:flex-1">
-                <PersonaAvatar persona={persona} />
-                <Label className="relative grid gap-2 [&>input]:sr-only [&>span]:flex [&>span]:min-h-12 [&>span]:items-center [&>span]:gap-2 [&>span]:border [&>span]:border-dashed [&>span]:border-border [&>span]:p-3">
-                    <UploadSimple aria-hidden="true" />
-                    <span>아바타 업로드</span>
-                    <Input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp,image/gif"
-                        onChange={(event) => void handleAvatarChange(event)}
-                    />
-                </Label>
-                {persona.avatarAssetId ? (
-                    <Button variant="ghost" onClick={() => void removeAvatar(persona.id)}>
-                        아바타 제거
-                    </Button>
-                ) : null}
+            <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-stretch gap-3 max-sm:grid-cols-[5rem_minmax(0,1fr)]">
+                <PersonaAvatar persona={persona} className="aspect-square text-base" />
+                <div className="grid content-end gap-2">
+                    <Label className="flex min-h-12 cursor-pointer items-center gap-2 rounded-md border border-dashed border-border px-3 text-sm font-medium transition-colors hover:border-ring hover:bg-accent/50">
+                        <UploadSimple aria-hidden="true" />
+                        <span>아바타 업로드</span>
+                        <Input
+                            className="sr-only"
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif"
+                            onChange={(event) => void handleAvatarChange(event)}
+                        />
+                    </Label>
+                    {persona.avatarAssetId ? (
+                        <Button variant="outline" onClick={() => void removeAvatar(persona.id)}>
+                            아바타 제거
+                        </Button>
+                    ) : null}
+                </div>
             </div>
             <Label className="grid items-start gap-2 text-xs font-medium leading-normal text-muted-foreground">
                 이름
@@ -98,14 +97,9 @@ export function PersonaDetailForm({
                     모델에 전송되지 않습니다.
                 </span>
             </Label>
-            <div className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
-                <Button disabled={isActive} onClick={onSetActive}>
-                    <Star aria-hidden="true" /> 전역 페르소나로 지정
-                </Button>
-                <Button variant="destructive" onClick={onDelete}>
-                    <Trash aria-hidden="true" /> 삭제
-                </Button>
-            </div>
+            <Button variant="destructive" onClick={onDelete}>
+                <Trash aria-hidden="true" /> 삭제
+            </Button>
         </div>
     )
 }

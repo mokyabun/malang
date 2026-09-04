@@ -1,11 +1,17 @@
-import type { AppSettings, Persona } from '@malang/shared'
-import { Plus, Star } from '@phosphor-icons/react'
+import type { AppSettings } from '@malang/shared'
+import { Plus } from '@phosphor-icons/react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { useEffect, useState } from 'react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 
 import { ConfirmDialog } from '../../dialogs/confirm-dialog'
 import {
@@ -19,7 +25,6 @@ import {
     selectPersonaAtom,
 } from './atom'
 import { blankPersonaDraft, personaLabel } from './model'
-import { PersonaAvatar } from './persona-avatar'
 import { PersonaDetailForm } from './persona-detail-form'
 
 export function PersonaManager({
@@ -41,42 +46,53 @@ export function PersonaManager({
         if (!personas.length) void loadPersonas()
     }, [loadPersonas, personas.length])
 
+    useEffect(() => {
+        setEditingId(activePersona?.id ?? null)
+    }, [activePersona?.id, setEditingId])
+
     const editing = personas.find((persona) => persona.id === editingId) || null
 
     async function handleCreate() {
         const persona = await createPersona(blankPersonaDraft())
-        if (persona) setEditingId(persona.id)
-    }
-
-    async function handleSetActive(persona: Persona) {
+        if (!persona) return
         const settings = await selectPersona(persona.id)
-        if (settings) onSettingsChange(settings)
+        if (settings) {
+            onSettingsChange(settings)
+        } else {
+            setEditingId(activePersona?.id ?? null)
+        }
     }
 
     return (
         <div className="grid gap-5">
-            <div className="flex flex-wrap gap-2 rounded-md border border-border bg-background/30 p-4">
-                {personas.map((persona) => (
-                    <Button
-                        variant="ghost"
-                        key={persona.id}
-                        className={cn(
-                            `relative grid w-[5.5rem] place-items-center gap-1.5 rounded-md border border-border bg-background/70 p-2.5 text-center text-xs text-muted-foreground hover:border-ring [&_.avatar]:size-14 [&.active]:border-selection-border [&.active]:text-foreground ${editingId === persona.id ? 'border-selection-border bg-selection-strong text-foreground ring-1 ring-selection-border hover:border-selection-border hover:bg-selection-strong hover:text-foreground' : ''}`,
-                        )}
-                        onClick={() => setEditingId(persona.id)}
-                    >
-                        <PersonaAvatar persona={persona} />
-                        <span>{personaLabel(persona)}</span>
-                        {activePersona?.id === persona.id ? (
-                            <span className="absolute -top-2 right-1 flex items-center gap-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] text-primary-foreground">
-                                <Star aria-hidden="true" weight="fill" /> 전역
-                            </span>
+            <div className="grid gap-3">
+                <Select
+                    value={activePersona?.id || '__none__'}
+                    onValueChange={(next) => {
+                        if (!next || next === '__none__') return
+                        void selectPersona(String(next)).then((settings) => {
+                            if (settings) onSettingsChange(settings)
+                        })
+                    }}
+                >
+                    <SelectTrigger size="lg" className="w-full font-medium text-foreground">
+                        <SelectValue placeholder="페르소나 선택" />
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                        {!activePersona ? (
+                            <SelectItem value="__none__" disabled>
+                                페르소나 선택
+                            </SelectItem>
                         ) : null}
-                    </Button>
-                ))}
+                        {personas.map((persona) => (
+                            <SelectItem key={persona.id} value={persona.id}>
+                                {personaLabel(persona)}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
                 <Button
-                    variant="ghost"
-                    className="relative grid w-[5.5rem] place-items-center gap-1.5 rounded-md border border-dashed border-border bg-background/40 p-2.5 text-center text-xs text-muted-foreground hover:border-ring hover:text-foreground [&_svg]:size-5"
+                    variant="outline"
                     onClick={() => void handleCreate()}
                     aria-label="페르소나 추가"
                 >
@@ -89,8 +105,6 @@ export function PersonaManager({
                 <PersonaDetailForm
                     key={editing.id}
                     persona={editing}
-                    isActive={activePersona?.id === editing.id}
-                    onSetActive={() => void handleSetActive(editing)}
                     onDelete={() => setConfirmDelete(true)}
                 />
             ) : null}
