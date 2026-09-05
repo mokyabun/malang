@@ -1,4 +1,4 @@
-import { AppSettingsSchema } from '@malang/shared'
+import { AppSettingsPatchSchema } from '@malang/shared'
 import { Hono } from 'hono'
 
 import { NotFoundError, ValidationError } from '@/errors'
@@ -30,7 +30,7 @@ export function createSettingsDomain(context: AppContext) {
                 },
             })
         })
-        .patch('/', jsonValidator(AppSettingsSchema.partial()), (c) => {
+        .patch('/', jsonValidator(AppSettingsPatchSchema), (c) => {
             const body = c.req.valid('json')
             if (body.defaultPromptPresetId && !context.prompts.get(body.defaultPromptPresetId)) {
                 throw new ValidationError('Default prompt preset does not exist')
