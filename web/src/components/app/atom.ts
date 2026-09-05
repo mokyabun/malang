@@ -32,12 +32,15 @@ export const selectedConversationIdAtom = atom<string | null>(null)
 export const workspaceInitializedAtom = atom(false)
 export const workspaceLoadingAtom = atom(false)
 export const workspaceErrorAtom = atom('')
+/** Invalidates settings reads that started before a prompt-toggle write completed. */
+export const promptToggleRevisionAtom = atom(0)
 
 export const updatePromptToggleValuesAtom = atom(
     null,
     async (_get, set, promptToggleValues: Record<string, string>) => {
         try {
             const settings = await api.updateSettings({ promptToggleValues })
+            set(promptToggleRevisionAtom, (revision) => revision + 1)
             set(settingsAtom, settings)
             return settings
         } catch (cause) {

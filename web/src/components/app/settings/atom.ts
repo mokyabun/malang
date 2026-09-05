@@ -6,6 +6,7 @@ import {
     modelApiKeysAtom,
     modelChainPresetsAtom,
     modelPresetsAtom,
+    promptToggleRevisionAtom,
     promptModulesAtom,
     promptPresetsAtom,
     providerAtom,
@@ -22,6 +23,7 @@ export const settingsErrorAtom = atom('')
 export const loadSettingsAtom = atom(null, async (get, set) => {
     if (get(settingsLoadingAtom)) return
 
+    const promptToggleRevision = get(promptToggleRevisionAtom)
     set(settingsLoadingAtom, true)
     set(settingsErrorAtom, '')
     try {
@@ -42,7 +44,11 @@ export const loadSettingsAtom = atom(null, async (get, set) => {
             api.modelCatalog(),
             api.modelChains(),
         ])
-        set(settingsAtom, settings)
+        // A toggle save can finish while the settings screen is loading. In that case this
+        // response may contain the value read before the save and must not overwrite it.
+        if (get(promptToggleRevisionAtom) === promptToggleRevision) {
+            set(settingsAtom, settings)
+        }
         set(providerAtom, provider)
         set(modelPresetsAtom, modelCatalog.presets)
         set(modelApiKeysAtom, modelCatalog.apiKeys)
