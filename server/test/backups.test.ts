@@ -80,6 +80,33 @@ describe('automatic database backups', () => {
         expect(snapshots()).toHaveLength(2)
     })
 
+    test('lists, restores, and deletes user snapshots with a restore safety point', () => {
+        store.settings.update({ userName: 'Saved state' })
+        const manual = backup.create()
+        expect(backup.list()).toContainEqual(manual)
+
+        store.settings.update({ userName: 'Current state' })
+        const result = backup.restore(manual.id)
+        expect(result.restored.id).toBe(manual.id)
+        expect(result.safetySnapshot.kind).toBe('beforeRestore')
+        expect(store.settings.get().userName).toBe('Saved state')
+
+        const safety = new Database(join(backup.directory, result.safetySnapshot.id), {
+            readonly: true,
+        })
+        try {
+            expect(safety.query('SELECT user_name FROM app_settings').get()).toEqual({
+                user_name: 'Current state',
+            })
+        } finally {
+            safety.close()
+        }
+
+        expect(backup.delete(manual.id)).toBe(true)
+        expect(backup.delete(manual.id)).toBe(false)
+        expect(backup.file('../data.sqlite')).toBeNull()
+    })
+
     test('environment opt-out overrides enabled settings without creating a directory', () => {
         const config = loadConfig({
             NODE_ENV: 'test',

@@ -45,6 +45,10 @@ export class SecretVault {
         return this.hasSecret() && !this.key
     }
 
+    lock(): void {
+        this.key = null
+    }
+
     hasSecret(): boolean {
         return this.store.secretStorage.get().providerSecret !== null
     }

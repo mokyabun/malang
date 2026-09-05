@@ -118,6 +118,45 @@ describe('Hono API and SQLite persistence', () => {
         expect(invalid.status).toBe(422)
     })
 
+    test('creates, lists, downloads, and deletes database snapshots', async () => {
+        if (!cookie) {
+            const login = await app.request('/api/v1/auth/login', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ password: config.adminPassword }),
+            })
+            cookie = login.headers.get('set-cookie')!.split(';')[0]!
+        }
+        const created = await app.request('/api/v1/settings/backups', {
+            method: 'POST',
+            headers: { cookie },
+        })
+        expect(created.status).toBe(201)
+        const snapshot = (await created.json()) as { id: string; kind: string; size: number }
+        expect(snapshot.kind).toBe('manual')
+        expect(typeof snapshot.size).toBe('number')
+        const snapshotSize = snapshot.size
+
+        const listed = await app.request('/api/v1/settings/backups', { headers: { cookie } })
+        expect(await listed.json()).toMatchObject({
+            snapshots: [expect.objectContaining({ id: snapshot.id })],
+        })
+
+        const downloaded = await app.request(
+            `/api/v1/settings/backups/${encodeURIComponent(snapshot.id)}/download`,
+            { headers: { cookie } },
+        )
+        expect(downloaded.status).toBe(200)
+        expect(downloaded.headers.get('content-type')).toBe('application/vnd.sqlite3')
+        expect((await downloaded.arrayBuffer()).byteLength).toBe(snapshotSize)
+
+        const deleted = await app.request(
+            `/api/v1/settings/backups/${encodeURIComponent(snapshot.id)}`,
+            { method: 'DELETE', headers: { cookie } },
+        )
+        expect(deleted.status).toBe(204)
+    })
+
     test('returns stable structured errors with request IDs and validation issues', async () => {
         const malformed = await app.request('/api/v1/settings', {
             method: 'PATCH',
@@ -947,6 +986,49 @@ describe('Hono API and SQLite persistence', () => {
             },
         })
 
+        const requestLogs = await app.request('/api/v1/debug/request-logs', {
+            headers: { cookie },
+        })
+        expect(requestLogs.status).toBe(200)
+        const requestLogsBody = (await requestLogs.json()) as {
+            requests: Array<{
+                id: string
+                statusCode: number
+                modelId: string
+                inputTokens: number | null
+                outputTokens: number | null
+                hasDetails: boolean
+            }>
+        }
+        expect(requestLogsBody.requests[0]).toMatchObject({
+            statusCode: 200,
+            modelId: 'test-model',
+            hasDetails: true,
+        })
+
+        const requestLogDetail = await app.request(
+            `/api/v1/debug/request-logs/${requestLogsBody.requests[0]!.id}`,
+            { headers: { cookie } },
+        )
+        expect(requestLogDetail.status).toBe(200)
+        const requestLogDetailBody = (await requestLogDetail.json()) as {
+            requests: Array<{ request: { endpoint: string } }>
+            response: string
+        }
+        expect(requestLogDetailBody.requests[0]?.request.endpoint).toContain('/api/chat')
+        expect(requestLogDetailBody.response).toBe('Hello from Ollama')
+
+        const usage = await app.request('/api/v1/debug/request-logs/usage', {
+            headers: { cookie },
+        })
+        expect(usage.status).toBe(200)
+        const usageBody = (await usage.json()) as {
+            totals: { requests: number; outputTokens: number }
+            models: Array<{ modelId: string; requests: number }>
+        }
+        expect(usageBody.totals.requests).toBeGreaterThanOrEqual(1)
+        expect(usageBody.models.some((model) => model.modelId === 'test-model')).toBe(true)
+
         const assistant = context.store.message
             .list(conversationId)
             .findLast(
@@ -988,6 +1070,20 @@ describe('Hono API and SQLite persistence', () => {
                 })
             ).status,
         ).toBe(200)
+
+        const clearedLogs = await app.request('/api/v1/debug/request-logs', {
+            method: 'DELETE',
+            headers: { cookie },
+        })
+        expect(clearedLogs.status).toBe(200)
+        const afterClear = (await (
+            await app.request('/api/v1/debug/request-logs', { headers: { cookie } })
+        ).json()) as { requests: unknown[] }
+        expect(afterClear.requests).toEqual([])
+        const usageAfterClear = (await (
+            await app.request('/api/v1/debug/request-logs/usage', { headers: { cookie } })
+        ).json()) as { totals: { requests: number } }
+        expect(usageAfterClear.totals.requests).toBeGreaterThanOrEqual(1)
         await app.request('/api/v1/settings', {
             method: 'PATCH',
             headers: { cookie, 'content-type': 'application/json' },

@@ -14,8 +14,7 @@ export const SETTINGS_SECTIONS = [
     'persona',
     'prompts',
     'modules',
-    'debug',
-    'backup',
+    'system',
 ] as const
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]

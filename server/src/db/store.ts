@@ -132,6 +132,10 @@ export class Store {
         return this.handle.db
     }
 
+    replaceWith(sourcePath: string, rollbackPath: string): void {
+        this.handle.replaceWith(sourcePath, rollbackPath)
+    }
+
     close(): void {
         this.handle.close()
     }

@@ -1,18 +1,17 @@
-import { BackupSection } from './backup/backup-section'
-import { RequestDebugSection } from './debug/request-debug-section'
 import { ModelChainSection } from './model-chains/model-chain-section'
 import { ModelPresetSection } from './model-presets/model-preset-section'
 import { ModulesSection } from './modules/modules-section'
 import { PersonaSection } from './persona/persona-section'
 import { PromptPresetSection } from './prompt/prompt-preset-section'
+import { SystemSection } from './system/system-section'
 import { ThemeSection } from './theme/theme-section'
 import type { SettingsPanelProps } from './types'
 
 export function SettingsContent({ section, ...props }: SettingsPanelProps) {
     switch (section) {
-        case 'backup':
+        case 'system':
             return (
-                <BackupSection
+                <SystemSection
                     settings={props.settings}
                     onSettingsChange={props.onSettingsChange}
                 />
@@ -39,13 +38,6 @@ export function SettingsContent({ section, ...props }: SettingsPanelProps) {
             )
         case 'persona':
             return <PersonaSection onSettingsChange={props.onSettingsChange} />
-        case 'debug':
-            return (
-                <RequestDebugSection
-                    settings={props.settings}
-                    onSettingsChange={props.onSettingsChange}
-                />
-            )
         case 'prompts':
             return (
                 <PromptPresetSection

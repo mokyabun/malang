@@ -64,6 +64,62 @@ export class ApiClientError extends Error {
     }
 }
 
+export interface BackupSnapshot {
+    id: string
+    createdAt: number
+    size: number
+    kind: 'automatic' | 'manual' | 'beforeRestore'
+}
+
+export interface SystemLogEntry {
+    id: number
+    timestamp: number
+    level: 'info' | 'warning' | 'error'
+    message: string
+    module: string | null
+    event: string | null
+    details: string | null
+}
+
+export interface ProviderRequestLog {
+    id: string
+    conversationId: string
+    conversationTitle: string | null
+    source: 'chat'
+    status: 'running' | 'complete' | 'cancelled' | 'failed'
+    statusCode: number
+    provider: string
+    modelId: string
+    inputTokens: number | null
+    outputTokens: number | null
+    errorCode: string | null
+    errorMessage: string | null
+    startedAt: string
+    completedAt: string | null
+    durationMs: number | null
+    hasDetails: boolean
+}
+
+export interface ProviderRequestLogDetail extends ProviderRequestLog {
+    response: string
+    requests: Array<{ request: unknown; parameters: unknown }>
+}
+
+export interface UsageAggregate {
+    requests: number
+    failed: number
+    inputTokens: number
+    outputTokens: number
+    avgDurationMs: number | null
+}
+
+export interface UsageStatistics {
+    totals: UsageAggregate
+    days: Array<UsageAggregate & { date: string }>
+    models: Array<UsageAggregate & { provider: string; modelId: string }>
+    sources: Array<UsageAggregate & { source: 'chat' }>
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers)
     if (init.body && !(init.body instanceof FormData) && !headers.has('content-type')) {
@@ -78,6 +134,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!response.ok) throw await responseError(response)
     if (response.status === 204) return undefined as T
     return (await response.json()) as T
+}
+
+async function requestBlob(path: string): Promise<Blob> {
+    const response = await fetch(`${API_BASE}${path}`, { credentials: 'include' })
+    if (!response.ok) throw await responseError(response)
+    return response.blob()
 }
 
 async function responseError(response: Response): Promise<ApiClientError> {
@@ -302,11 +364,32 @@ export const api = {
     },
     settings: () => request<AppSettings>('/settings'),
     backupConfig: () => request<{ allowed: boolean }>('/settings/backup'),
+    backupSnapshots: () => request<{ snapshots: BackupSnapshot[] }>('/settings/backups'),
+    createBackupSnapshot: () => request<BackupSnapshot>('/settings/backups', { method: 'POST' }),
+    restoreBackupSnapshot: (id: string) =>
+        request<{ restored: BackupSnapshot; safetySnapshot: BackupSnapshot }>(
+            `/settings/backups/${encodeURIComponent(id)}/restore`,
+            { method: 'POST' },
+        ),
+    deleteBackupSnapshot: (id: string) =>
+        request<void>(`/settings/backups/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    downloadBackupSnapshot: (id: string) =>
+        requestBlob(`/settings/backups/${encodeURIComponent(id)}/download`),
     updateSettings: (input: Partial<AppSettings>) =>
         request<AppSettings>('/settings', { method: 'PATCH', body: JSON.stringify(input) }),
     requestDebugHistory: () => request<{ requests: RequestDebugRecord[] }>('/debug/requests'),
     clearRequestDebugHistory: () =>
         request<{ deleted: number }>('/debug/requests', { method: 'DELETE' }),
+    systemLogs: () => request<{ logs: SystemLogEntry[] }>('/debug/system-logs'),
+    clearSystemLogs: () => request<{ deleted: number }>('/debug/system-logs', { method: 'DELETE' }),
+    providerRequestLogs: () => request<{ requests: ProviderRequestLog[] }>('/debug/request-logs'),
+    providerRequestLog: (id: string) =>
+        request<ProviderRequestLogDetail>(`/debug/request-logs/${encodeURIComponent(id)}`),
+    clearProviderRequestLogs: () =>
+        request<{ deletedDetails: number; cutoff: number }>('/debug/request-logs', {
+            method: 'DELETE',
+        }),
+    usageStatistics: () => request<UsageStatistics>('/debug/request-logs/usage'),
     provider: () => request<ProviderSettings | null>('/provider'),
     updateProvider: (input: ProviderSettingsInput) =>
         request<ProviderSettings>('/provider', { method: 'PUT', body: JSON.stringify(input) }),

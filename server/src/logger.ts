@@ -1,6 +1,7 @@
 import pino, { type Logger } from 'pino'
 
 import type { AppConfig } from './config'
+import type { SystemLogService } from './services/app/system-logs'
 
 const REDACT_PATHS = [
     'password',
@@ -20,6 +21,7 @@ const REDACT_PATHS = [
 
 export function createLogger(
     config: Pick<AppConfig, 'nodeEnv' | 'logLevel' | 'logPretty' | 'logColorize'>,
+    systemLogs?: SystemLogService,
 ): Logger {
     const options: pino.LoggerOptions = {
         level: config.logLevel,
@@ -38,6 +40,16 @@ export function createLogger(
             err: pino.stdSerializers.err,
             error: pino.stdSerializers.err,
         },
+        ...(systemLogs
+            ? {
+                  hooks: {
+                      logMethod(args, method, level) {
+                          systemLogs.capture(level, args, this.bindings())
+                          method.apply(this, args)
+                      },
+                  },
+              }
+            : {}),
     }
 
     if (!config.logPretty) return pino(options)

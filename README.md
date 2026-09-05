@@ -69,14 +69,19 @@ Uploaded JSON credentials and API keys are never returned by the API: they are e
 at rest with AES-256-GCM using a key derived from the administrator password, and are
 re-encrypted when that password changes.
 
-## Automatic backups
+## Database snapshots
 
-Automatic **database-only** snapshots are enabled by default. The server saves a snapshot
-at startup and checks for changes every five minutes, retaining up to 20 snapshots / 500 MB
-in `DATA_DIR/backups`. The newest snapshot is always retained even if it exceeds 500 MB.
-Unchanged databases are skipped. Backup failures are logged without stopping the server.
+Open **Settings → 시스템 → 스냅샷** to create, browse, restore, download, or delete server-side
+**database-only** snapshots. Restoring first creates a `before-restore` safety snapshot, swaps
+the live database without requiring a server restart, and reloads the app. Restore is blocked
+while a response is being generated.
 
-Disable them in **Settings → 백업 → 자동 백업**, or set `AUTO_BACKUP_ENABLED=false`
+Automatic snapshots are enabled by default. The server saves one at startup and checks for
+changes every five minutes, retaining up to 20 automatic snapshots / 500 MB. The newest
+automatic snapshot is always retained even if it exceeds 500 MB. Manual and restore-safety
+snapshots are kept until you delete them. Unchanged databases are skipped.
+
+Disable them in **Settings → 시스템 → 스냅샷 → 자동 스냅샷**, or set `AUTO_BACKUP_ENABLED=false`
 and restart the server. The environment opt-out takes precedence over the saved setting.
 Disabling backups does not delete existing snapshots. Docker Compose supports this variable too.
 
@@ -84,11 +89,18 @@ Snapshots include chats, character records, settings, and encrypted credentials,
 image/media files in `DATA_DIR/assets`**. Keep a separate copy of assets and an off-device
 backup for disaster recovery. Protect snapshots as sensitive data.
 
-To restore, stop the server, move the current database and its `-wal` / `-shm` sidecars
-to a safe location, then copy the chosen `.sqlite` snapshot to `DATABASE_URL`
-(default `DATA_DIR/data.sqlite`) and restart. Keep the assets at their original path;
-asset records contain absolute paths. Credentials require the administrator password
-that was active at the time of the snapshot. No in-app restore action is provided.
+Keep assets at their original path; asset records contain absolute paths. Credentials require
+the administrator password that was active at the time of the snapshot, so restoring an older
+snapshot may return you to the login screen.
+
+## System diagnostics
+
+**Settings → 시스템** also contains persistent system logs, provider request logs, and usage
+statistics. System logs retain the newest 5,000 entries in `DATA_DIR/system-logs.sqlite`; known
+credentials, prompt fields, and request bodies are masked before storage. Request metadata and
+usage totals come from generation history. Optional request-body capture retains the latest 100
+detailed provider payloads and can include private conversation content, so leave it disabled
+unless it is needed for debugging. Clearing the request-log view does not erase usage totals.
 
 ## Code quality
 

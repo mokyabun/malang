@@ -1,6 +1,5 @@
 import {
     BracketsCurly,
-    Bug,
     HardDrives,
     Palette,
     PuzzlePiece,
@@ -42,6 +41,5 @@ export const SETTINGS_NAV: Array<{
         icon: BracketsCurly,
     },
     { section: 'modules', label: '모듈', icon: PuzzlePiece },
-    { section: 'debug', label: '요청 디버그', icon: Bug },
-    { section: 'backup', label: '백업', icon: HardDrives },
+    { section: 'system', label: '시스템', icon: HardDrives },
 ]

@@ -13,6 +13,9 @@ describe('settings navigation', () => {
     test('keeps the modules URL and rejects unsupported sections', () => {
         expect(isSettingsSection('modules')).toBe(true)
         expect(isSettingsSection('provider')).toBe(true)
+        expect(isSettingsSection('system')).toBe(true)
+        expect(isSettingsSection('backup')).toBe(false)
+        expect(isSettingsSection('debug')).toBe(false)
         expect(isSettingsSection('unknown')).toBe(false)
         expect(isSettingsSection('')).toBe(false)
     })

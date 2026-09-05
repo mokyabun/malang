@@ -1,7 +1,7 @@
 import { AppSettingsSchema } from '@malang/shared'
 import { Hono } from 'hono'
 
-import { ValidationError } from '@/errors'
+import { NotFoundError, ValidationError } from '@/errors'
 import type { AppContext } from '@/services'
 import { type AppEnv, jsonValidator } from '@/utils'
 
@@ -9,6 +9,27 @@ export function createSettingsDomain(context: AppContext) {
     return new Hono<AppEnv>()
         .get('/', (c) => c.json(context.store.settings.get()))
         .get('/backup', (c) => c.json({ allowed: context.config.autoBackupEnabled }))
+        .get('/backups', (c) => c.json({ snapshots: context.backups.list() }))
+        .post('/backups', (c) => c.json(context.backups.create(), 201))
+        .post('/backups/:id/restore', (c) => c.json(context.backups.restore(c.req.param('id'))))
+        .delete('/backups/:id', (c) => {
+            if (!context.backups.delete(c.req.param('id'))) {
+                throw new NotFoundError('Snapshot does not exist')
+            }
+            return c.body(null, 204)
+        })
+        .get('/backups/:id/download', (c) => {
+            const id = c.req.param('id')
+            const path = context.backups.file(id)
+            if (!path) throw new NotFoundError('Snapshot does not exist')
+            return new Response(Bun.file(path), {
+                headers: {
+                    'cache-control': 'private, no-store',
+                    'content-disposition': `attachment; filename="${id}"`,
+                    'content-type': 'application/vnd.sqlite3',
+                },
+            })
+        })
         .patch('/', jsonValidator(AppSettingsSchema.partial()), (c) => {
             const body = c.req.valid('json')
             if (body.defaultPromptPresetId && !context.prompts.get(body.defaultPromptPresetId)) {
