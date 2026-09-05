@@ -102,7 +102,11 @@ export class VertexAdapter implements ProviderAdapter {
         request.onRequest?.({
             endpoint: vertexDebugEndpoint(config),
             method: 'POST',
-            headers: { 'content-type': 'application/json' },
+            headers: {
+                'content-type': 'application/json',
+                authorization: 'Bearer [redacted]',
+                ...pocketRisuProfileHeaders(config.providerOptions),
+            },
             body,
         })
 

@@ -302,27 +302,23 @@ export class GenerationService {
                             messages: injectChainNotes(preview.messages, notes),
                             parameters,
                             signal: abortController.signal,
-                            ...(context.settings.requestDebugEnabled
-                                ? {
-                                      onRequest: (snapshot) => {
-                                          try {
-                                              this.store.requestDebug.create({
-                                                  generationId,
-                                                  conversationId,
-                                                  provider: providerConfig.provider,
-                                                  modelId: providerConfig.modelId,
-                                                  parameters,
-                                                  request: snapshot,
-                                              })
-                                          } catch (error) {
-                                              this.log.warn(
-                                                  { event: 'request_debug.capture_failed', error },
-                                                  'Failed to capture provider request',
-                                              )
-                                          }
-                                      },
-                                  }
-                                : {}),
+                            onRequest: (snapshot) => {
+                                try {
+                                    this.store.requestDebug.create({
+                                        generationId,
+                                        conversationId,
+                                        provider: providerConfig.provider,
+                                        modelId: providerConfig.modelId,
+                                        parameters,
+                                        request: snapshot,
+                                    })
+                                } catch (error) {
+                                    this.log.warn(
+                                        { event: 'request_debug.capture_failed', error },
+                                        'Failed to capture provider request',
+                                    )
+                                }
+                            },
                         })) {
                             if (chunk.delta) {
                                 content += chunk.delta
@@ -354,7 +350,6 @@ export class GenerationService {
                               context: chainContext!,
                               generationId,
                               conversationId,
-                              requestDebugEnabled: context.settings.requestDebugEnabled,
                               signal: abortController.signal,
                               generateMain,
                           })
@@ -488,7 +483,6 @@ export class GenerationService {
         context: ChainExecutionContext
         generationId: string
         conversationId: string
-        requestDebugEnabled: boolean
         signal: AbortSignal
         generateMain: (notes: ChainNote[]) => Promise<string>
     }): Promise<string> {
@@ -601,7 +595,6 @@ export class GenerationService {
         input: {
             generationId: string
             conversationId: string
-            requestDebugEnabled: boolean
             signal: AbortSignal
             chain: NonNullable<RequestDebugSnapshot['chain']>
         },
@@ -613,18 +606,14 @@ export class GenerationService {
             messages,
             parameters,
             signal: input.signal,
-            ...(input.requestDebugEnabled
-                ? {
-                      onRequest: (snapshot) =>
-                          this.captureChainRequest(
-                              input.generationId,
-                              input.conversationId,
-                              runtime,
-                              parameters,
-                              { ...snapshot, chain: input.chain },
-                          ),
-                  }
-                : {}),
+            onRequest: (snapshot) =>
+                this.captureChainRequest(
+                    input.generationId,
+                    input.conversationId,
+                    runtime,
+                    parameters,
+                    { ...snapshot, chain: input.chain },
+                ),
         })) {
             content += chunk.delta
         }

@@ -2,6 +2,7 @@ import {
     ArrowClockwise,
     CaretDown,
     CaretRight,
+    ClipboardText,
     MagnifyingGlass,
     Trash,
 } from '@phosphor-icons/react'
@@ -12,15 +13,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import { Switch } from '@/components/ui/switch'
 import { api, type ProviderRequestLog, type ProviderRequestLogDetail } from '@/lib/api'
 
-import type { SettingsPanelProps } from '../types'
-
-export function RequestLogsPanel({
-    settings,
-    onSettingsChange,
-}: Pick<SettingsPanelProps, 'settings' | 'onSettingsChange'>) {
+export function RequestLogsPanel() {
     const [requests, setRequests] = useState<ProviderRequestLog[]>([])
     const [details, setDetails] = useState<Record<string, ProviderRequestLogDetail>>({})
     const [expanded, setExpanded] = useState('')
@@ -71,16 +66,6 @@ export function RequestLogsPanel({
         })
     }, [query, requests, status])
 
-    async function toggleDetails(enabled: boolean) {
-        try {
-            onSettingsChange(await api.updateSettings({ requestDebugEnabled: enabled }))
-        } catch (cause) {
-            setError(
-                cause instanceof Error ? cause.message : '상세 기록 설정을 저장하지 못했습니다.',
-            )
-        }
-    }
-
     async function toggleExpanded(request: ProviderRequestLog) {
         if (expanded === request.id) {
             setExpanded('')
@@ -112,23 +97,13 @@ export function RequestLogsPanel({
     return (
         <section>
             <p className="mb-5 text-sm leading-6 text-muted-foreground">
-                모델 제공자로 보낸 요청의 결과, 토큰과 소요 시간을 기록합니다. 상세 기록을 켜면 최종
-                요청 본문도 함께 확인할 수 있습니다.
+                모델 제공자로 보낸 요청의 URL, 마스킹된 헤더, 본문, 응답과 토큰 사용량을 기록합니다.
+                최근 100건의 상세 요청을 보존합니다.
             </p>
-            <div className="mb-5 flex items-center justify-between gap-5 rounded-xl border border-border bg-card/40 p-4">
-                <div>
-                    <strong className="text-sm">요청 본문 상세 기록</strong>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        인증 키는 제외되지만 대화와 시스템 프롬프트가 포함됩니다. 최근 100건의 상세
-                        본문을 보존합니다.
-                    </p>
-                </div>
-                <Switch
-                    aria-label="요청 본문 상세 기록"
-                    checked={Boolean(settings?.requestDebugEnabled)}
-                    onCheckedChange={(checked) => void toggleDetails(checked)}
-                />
-            </div>
+            <p className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs leading-5 text-muted-foreground">
+                인증 키와 쿠키는 저장 전에 마스킹됩니다. 요청 본문에는 대화와 시스템 프롬프트가
+                포함될 수 있습니다.
+            </p>
             <div className="mb-4 flex flex-wrap gap-2">
                 <div className="relative min-w-56 flex-1">
                     <MagnifyingGlass className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -243,18 +218,29 @@ export function RequestLogsPanel({
                                                 )}
                                                 {detail.requests.length > 0 ? (
                                                     detail.requests.map((captured, index) => (
-                                                        <div
-                                                            key={index}
-                                                            className="grid gap-3 lg:grid-cols-2"
-                                                        >
+                                                        <div key={index} className="grid gap-4">
+                                                            <LogBlock
+                                                                title={`URL · ${requestSnapshot(captured.request).method}`}
+                                                                value={
+                                                                    requestSnapshot(
+                                                                        captured.request,
+                                                                    ).endpoint
+                                                                }
+                                                            />
+                                                            <LogBlock
+                                                                title="요청 헤더"
+                                                                value={
+                                                                    requestSnapshot(
+                                                                        captured.request,
+                                                                    ).headers
+                                                                }
+                                                            />
                                                             <LogBlock
                                                                 title="요청 본문"
                                                                 value={
-                                                                    (
-                                                                        captured.request as {
-                                                                            body?: unknown
-                                                                        }
-                                                                    )?.body ?? captured.request
+                                                                    requestSnapshot(
+                                                                        captured.request,
+                                                                    ).body
                                                                 }
                                                             />
                                                             <LogBlock
@@ -301,14 +287,51 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function LogBlock({ title, value }: { title: string; value: unknown }) {
+    const content = serialize(value)
     return (
         <section className="min-w-0">
-            <h4 className="mb-2 text-xs font-medium">{title}</h4>
+            <div className="mb-2 flex items-center justify-between gap-3">
+                <h4 className="text-xs font-medium">{title}</h4>
+                <Button
+                    aria-label={`${title} 복사`}
+                    size="icon-xs"
+                    variant="ghost"
+                    onClick={() => void navigator.clipboard.writeText(content)}
+                >
+                    <ClipboardText />
+                </Button>
+            </div>
             <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-background p-3 font-mono text-[10px] leading-5">
-                {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
+                {content}
             </pre>
         </section>
     )
+}
+
+function requestSnapshot(value: unknown): {
+    endpoint: string
+    method: string
+    headers: Record<string, string>
+    body: unknown
+} {
+    if (!value || typeof value !== 'object') {
+        return { endpoint: '—', method: 'POST', headers: {}, body: value }
+    }
+    const request = value as Record<string, unknown>
+    return {
+        endpoint: typeof request.endpoint === 'string' ? request.endpoint : '—',
+        method: typeof request.method === 'string' ? request.method : 'POST',
+        headers:
+            request.headers && typeof request.headers === 'object'
+                ? (request.headers as Record<string, string>)
+                : {},
+        body: request.body,
+    }
+}
+
+function serialize(value: unknown): string {
+    if (typeof value === 'string') return value
+    return JSON.stringify(value, null, 2) ?? String(value)
 }
 
 function formatNumber(value: number | null): string {

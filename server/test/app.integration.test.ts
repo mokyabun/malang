@@ -926,12 +926,12 @@ describe('Hono API and SQLite persistence', () => {
             moduleIntegrations: preset.moduleIntegrations,
             promptSettings: preset.promptSettings,
         })
-        const debugEnabled = await app.request('/api/v1/settings', {
+        const debugDisabled = await app.request('/api/v1/settings', {
             method: 'PATCH',
             headers: { cookie, 'content-type': 'application/json' },
-            body: JSON.stringify({ requestDebugEnabled: true }),
+            body: JSON.stringify({ requestDebugEnabled: false }),
         })
-        expect(debugEnabled.status).toBe(200)
+        expect(debugDisabled.status).toBe(200)
         const key = 'generation-stream-0001'
         const response = await app.request(`/api/v1/conversations/${conversationId}/generations`, {
             method: 'POST',
@@ -968,13 +968,18 @@ describe('Hono API and SQLite persistence', () => {
         const debugBody = (await debugHistory.json()) as {
             requests: Array<{
                 provider: string
-                request: { endpoint: string; body: { options: Record<string, unknown> } }
+                request: {
+                    endpoint: string
+                    headers: Record<string, string>
+                    body: { options: Record<string, unknown> }
+                }
             }>
         }
         expect(debugBody.requests[0]).toMatchObject({
             provider: 'ollama',
             request: {
                 endpoint: expect.stringContaining('/api/chat'),
+                headers: { 'content-type': 'application/json' },
                 body: {
                     options: {
                         temperature: 0.42,
@@ -1017,6 +1022,41 @@ describe('Hono API and SQLite persistence', () => {
         }
         expect(requestLogDetailBody.requests[0]?.request.endpoint).toContain('/api/chat')
         expect(requestLogDetailBody.response).toBe('Hello from Ollama')
+
+        context.store.requestDebug.create({
+            generationId: requestLogsBody.requests[0]!.id,
+            conversationId,
+            provider: 'ollama',
+            modelId: 'test-model',
+            parameters: preset.parameters,
+            request: {
+                endpoint: 'https://user:password@example.com/chat?api_key=secret',
+                method: 'POST',
+                headers: {
+                    authorization: 'Bearer should-not-be-stored',
+                    cookie: 'session=should-not-be-stored',
+                    'content-type': 'application/json',
+                },
+                body: {
+                    prompt: 'body is retained',
+                    max_tokens: 512,
+                    apiKey: 'body-secret-must-not-be-stored',
+                },
+            },
+        })
+        const sanitized = context.store.requestDebug.list()[0]!
+        expect(sanitized.request.endpoint).not.toContain('password')
+        expect(sanitized.request.endpoint).not.toContain('secret')
+        expect(sanitized.request.headers).toMatchObject({
+            authorization: '[redacted]',
+            cookie: '[redacted]',
+            'content-type': 'application/json',
+        })
+        expect(sanitized.request.body).toEqual({
+            prompt: 'body is retained',
+            max_tokens: 512,
+            apiKey: '[redacted]',
+        })
 
         const usage = await app.request('/api/v1/debug/request-logs/usage', {
             headers: { cookie },
@@ -1084,11 +1124,6 @@ describe('Hono API and SQLite persistence', () => {
             await app.request('/api/v1/debug/request-logs/usage', { headers: { cookie } })
         ).json()) as { totals: { requests: number } }
         expect(usageAfterClear.totals.requests).toBeGreaterThanOrEqual(1)
-        await app.request('/api/v1/settings', {
-            method: 'PATCH',
-            headers: { cookie, 'content-type': 'application/json' },
-            body: JSON.stringify({ requestDebugEnabled: false }),
-        })
     })
 
     test('continues generation after the client disconnects', async () => {
@@ -1114,8 +1149,9 @@ describe('Hono API and SQLite persistence', () => {
         })
         const debugHistory = (await (
             await app.request('/api/v1/debug/requests', { headers: { cookie } })
-        ).json()) as { requests: unknown[] }
-        expect(debugHistory.requests).toEqual([])
+        ).json()) as { requests: Array<{ generationId: string; request: { body: unknown } }> }
+        expect(debugHistory.requests[0]).toMatchObject({ generationId })
+        expect(debugHistory.requests[0]?.request.body).toBeDefined()
     })
 
     test('propagates cancellation and preserves partial assistant output', async () => {

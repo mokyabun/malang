@@ -20,7 +20,7 @@ export class RequestDebugRepository extends RepositoryBase {
             provider: input.provider,
             modelId: input.modelId,
             parametersJson: input.parameters,
-            requestJson: input.request,
+            requestJson: sanitizeRequest(input.request),
             createdAt: new Date(),
         }
         this.db.insert(requestDebugRecords).values(row).run()
@@ -52,6 +52,68 @@ export class RequestDebugRepository extends RepositoryBase {
         this.db.delete(requestDebugRecords).run()
         return count || 0
     }
+}
+
+function sanitizeRequest(request: RequestDebugSnapshot): RequestDebugSnapshot {
+    return {
+        ...request,
+        endpoint: sanitizeEndpoint(request.endpoint),
+        headers: Object.fromEntries(
+            Object.entries(request.headers).map(([name, value]) => [
+                name,
+                isSensitiveHeader(name) ? '[redacted]' : maskSecrets(value),
+            ]),
+        ),
+        body: sanitizeBody(request.body, new WeakSet()),
+    }
+}
+
+function sanitizeEndpoint(endpoint: string): string {
+    try {
+        const url = new URL(endpoint)
+        if (url.username) url.username = '[redacted]'
+        if (url.password) url.password = '[redacted]'
+        for (const key of url.searchParams.keys()) {
+            if (/(?:authorization|credential|secret|api[-_]?key|token|^key$)/i.test(key)) {
+                url.searchParams.set(key, '[redacted]')
+            }
+        }
+        return url.toString()
+    } catch {
+        return maskSecrets(endpoint)
+    }
+}
+
+function isSensitiveHeader(name: string): boolean {
+    return /(?:authorization|cookie|api[-_]?key|token|secret|credential)/i.test(name)
+}
+
+function sanitizeBody(value: unknown, seen: WeakSet<object>, key = ''): unknown {
+    if (
+        /^(?:authorization|cookie|password|credential|secret|api[-_]?key|(?:auth|access|refresh|session)[-_]?token)$/i.test(
+            key,
+        )
+    ) {
+        return '[redacted]'
+    }
+    if (typeof value === 'string') return maskSecrets(value)
+    if (!value || typeof value !== 'object') return value
+    if (seen.has(value)) return '[circular]'
+    seen.add(value)
+    if (Array.isArray(value)) return value.map((item) => sanitizeBody(item, seen))
+    return Object.fromEntries(
+        Object.entries(value).map(([childKey, child]) => [
+            childKey,
+            sanitizeBody(child, seen, childKey),
+        ]),
+    )
+}
+
+function maskSecrets(value: string): string {
+    return value
+        .replace(/Bearer\s+[^\s,;]+/gi, 'Bearer [redacted]')
+        .replace(/sk-(?:ant-)?[A-Za-z0-9_-]{12,}/g, '[redacted-api-key]')
+        .replace(/AIza[0-9A-Za-z_-]{20,}/g, '[redacted-api-key]')
 }
 
 function mapRequestDebugRecord(row: typeof requestDebugRecords.$inferSelect) {

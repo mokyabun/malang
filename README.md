@@ -97,10 +97,10 @@ snapshot may return you to the login screen.
 
 **Settings → 시스템** also contains persistent system logs, provider request logs, and usage
 statistics. System logs retain the newest 5,000 entries in `DATA_DIR/system-logs.sqlite`; known
-credentials, prompt fields, and request bodies are masked before storage. Request metadata and
-usage totals come from generation history. Optional request-body capture retains the latest 100
-detailed provider payloads and can include private conversation content, so leave it disabled
-unless it is needed for debugging. Clearing the request-log view does not erase usage totals.
+credentials, prompt fields, and request bodies are masked before storage. Routine completion
+events are emitted at debug level. Request metadata and usage totals come from generation history.
+The latest 100 detailed provider requests retain their URL, redacted headers, and body; bodies can
+include private conversation content. Clearing the request-log view does not erase usage totals.
 
 ## Code quality
 

@@ -58,9 +58,7 @@ export function SystemSection({
                 <BackupSection embedded settings={settings} onSettingsChange={onSettingsChange} />
             )}
             {page === 'logs' && <SystemLogsPanel />}
-            {page === 'requests' && (
-                <RequestLogsPanel settings={settings} onSettingsChange={onSettingsChange} />
-            )}
+            {page === 'requests' && <RequestLogsPanel />}
             {page === 'usage' && <UsagePanel />}
         </div>
     )
