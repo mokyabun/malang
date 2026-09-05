@@ -89,7 +89,7 @@ export function SystemLogsPanel() {
                         onChange={(event) => setQuery(event.target.value)}
                     />
                 </div>
-                {(['all', 'error', 'warning', 'info'] as const).map((value) => (
+                {(['all', 'error', 'warning', 'info', 'debug'] as const).map((value) => (
                     <Button
                         key={value}
                         size="sm"
@@ -193,7 +193,7 @@ export function SystemLogsPanel() {
 }
 
 function levelLabel(level: 'all' | SystemLogEntry['level']): string {
-    return { all: '전체', error: '오류', warning: '경고', info: '정보' }[level]
+    return { all: '전체', error: '오류', warning: '경고', info: '정보', debug: '디버그' }[level]
 }
 
 function relativeTime(timestamp: number): string {

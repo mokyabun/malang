@@ -74,7 +74,7 @@ export interface BackupSnapshot {
 export interface SystemLogEntry {
     id: number
     timestamp: number
-    level: 'info' | 'warning' | 'error'
+    level: 'debug' | 'info' | 'warning' | 'error'
     message: string
     module: string | null
     event: string | null

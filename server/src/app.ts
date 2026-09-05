@@ -65,7 +65,7 @@ export function createApp(context: AppContext) {
 
         await next()
 
-        log.info(
+        log.debug(
             {
                 event: 'request.completed',
                 requestId,

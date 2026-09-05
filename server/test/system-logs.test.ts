@@ -46,8 +46,13 @@ describe('persistent system logs', () => {
     })
 
     test('clears logs and independently advances the request-log cutoff', () => {
+        logs.capture(20, [{ event: 'request.completed' }, 'Request completed'])
         logs.capture(30, ['Ready'])
-        expect(logs.clear()).toBe(1)
+        expect(logs.list()).toEqual([
+            expect.objectContaining({ level: 'info', message: 'Ready' }),
+            expect.objectContaining({ level: 'debug', event: 'request.completed' }),
+        ])
+        expect(logs.clear()).toBe(2)
         expect(logs.list()).toHaveLength(0)
         expect(logs.requestLogCutoff()).toBe(0)
         expect(logs.clearRequestLogs(42)).toBe(42)

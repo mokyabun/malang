@@ -119,7 +119,8 @@ export function logGeneration(
     status: string,
     errorCode?: string,
 ): void {
-    log.info(
+    const method = status === 'failed' ? log.warn.bind(log) : log.debug.bind(log)
+    method(
         {
             event: 'generation.completed',
             generationId,

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 const MAX_LOGS = 5_000
 const MAX_DETAILS = 10_000
 
-export type SystemLogLevel = 'info' | 'warning' | 'error'
+export type SystemLogLevel = 'debug' | 'info' | 'warning' | 'error'
 
 export interface SystemLogEntry {
     id: number
@@ -50,7 +50,13 @@ export class SystemLogService {
     capture(levelNumber: number, args: unknown[], bindings: Record<string, unknown> = {}): void {
         try {
             const level: SystemLogLevel =
-                levelNumber >= 50 ? 'error' : levelNumber >= 40 ? 'warning' : 'info'
+                levelNumber >= 50
+                    ? 'error'
+                    : levelNumber >= 40
+                      ? 'warning'
+                      : levelNumber >= 30
+                        ? 'info'
+                        : 'debug'
             const first = isRecord(args[0]) ? args[0] : null
             const messageArg = first ? args[1] : args[0]
             const message = maskSensitive(
