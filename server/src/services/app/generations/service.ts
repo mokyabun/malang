@@ -1,8 +1,5 @@
-import { createHash } from 'node:crypto'
-
 import { CHAIN_MAIN_NODE_ID, planChainExecution } from '@malang/shared'
 import type {
-    ApiError,
     ChainExecutionNode,
     CompiledMessage,
     GenerationEvent,
@@ -21,15 +18,30 @@ import { normalizeError } from '@/errors/normalize'
 import type { LuaRuntime } from '@/services/lua'
 import type { HypaMemoryV3Service } from '@/services/memory'
 import { compilePrompt, mergeGenerationParameters } from '@/services/prompt/compiler'
-import { selectLoreEntries } from '@/services/prompt/lorebook'
 import { collectRegexScripts, processRegexText } from '@/services/prompt/regex-runtime'
-import { renderTemplate, type TemplateContext } from '@/services/prompt/template-engine'
 import { providerFor } from '@/services/providers'
 import type { ProviderUsage } from '@/services/providers/types'
 import type { RuntimeProviderConfig } from '@/services/providers/types'
 
-import type { PersonaService } from './personas'
-import type { ProviderService } from './providers'
+import type { PersonaService } from '../personas'
+import type { ProviderService } from '../providers'
+import {
+    applyEditProcess,
+    loadGenerationContext,
+    normalizeCompiledRole,
+    regexTemplateContext,
+} from './context'
+import { renderDisplayMessages } from './display'
+import {
+    applyPostMode,
+    buildChainExecutionContext,
+    chainAgentMessages,
+    injectChainNotes,
+    parseAgentMemoryOutput,
+    type ChainExecutionContext,
+    type ChainNote,
+} from './model-chain'
+import { encodeSse, logGeneration, reconnectGeneration, replayGeneration } from './streams'
 
 export class GenerationConflictError extends ConflictError {}
 export class GenerationNotConfiguredError extends ValidationError {}
@@ -59,7 +71,7 @@ export class GenerationService {
             parameters.maxContextTokens,
         )
         const preview = compilePrompt({ ...context, parameters, longTermMemory })
-        return this.applyEditProcess(preview, context)
+        return applyEditProcess(preview, context)
     }
 
     async start(conversationId: string, request: GenerationRequest, requestId: string) {
@@ -183,7 +195,7 @@ export class GenerationService {
                 parameters,
                 longTermMemory,
             })
-            preview = await this.applyEditProcess(preview, {
+            preview = await applyEditProcess(preview, {
                 ...context,
                 messages: compileMessages,
             })
@@ -481,7 +493,7 @@ export class GenerationService {
         generateMain: (notes: ChainNote[]) => Promise<string>
     }): Promise<string> {
         const plan = planChainExecution(input.preset)
-        if (!plan.batches.flat().some((node) => node.agent === null)) {
+        if (!plan.batches.some((batch) => batch.some((node) => node.agent === null))) {
             throw new Error('The model chain cannot reach the main response due to a cycle')
         }
         let mainResponse = ''
@@ -645,557 +657,10 @@ export class GenerationService {
 
     async messagesWithDisplay(conversationId: string) {
         const context = this.context(conversationId)
-        const scripts = collectRegexScripts(context.preset, context.character, context.modules)
-        const scriptSetHash = createHash('sha256')
-            .update('pocketrisu-display-assets-v1')
-            .update(this.lua.scriptSetHash(conversationId))
-            .update(JSON.stringify(scripts.filter((script) => script.phase === 'editdisplay')))
-            .digest('hex')
-        const epoch = context.conversation.displayEpoch
-        const cached = this.store.sqlite
-            .query<
-                { status: string; result_json: string | null; error_json: string | null },
-                [string, number, string]
-            >(
-                `SELECT status, result_json, error_json FROM lua_display_batches
-                 WHERE conversation_id = ? AND display_epoch = ? AND script_set_hash = ?`,
-            )
-            .get(conversationId, epoch, scriptSetHash)
-        if (cached?.status === 'complete' && cached.result_json) {
-            return JSON.parse(cached.result_json) as ReturnType<
-                GenerationService['context']
-            >['messages']
-        }
-        if (cached?.status === 'failed') throw new Error('The cached Lua display batch failed')
-        if (!cached) {
-            this.store.sqlite
-                .query(
-                    `INSERT INTO lua_display_batches
-                     (conversation_id, display_epoch, script_set_hash, status, created_at)
-                     VALUES (?, ?, ?, 'running', ?)`,
-                )
-                .run(conversationId, epoch, scriptSetHash, Date.now())
-        }
-        try {
-            const eventKey = `display:${epoch}:${scriptSetHash}`
-            const output = []
-            for (const [index, message] of context.messages.entries()) {
-                const luaDisplay = await this.lua.executeEvent({
-                    conversationId,
-                    eventKey,
-                    phase: `editDisplay:${index}`,
-                    mode: 'editDisplay',
-                    data: message.content,
-                    meta: { index },
-                    // A display GET has no initiating UI command target. editDisplay cannot use alerts.
-                    clientInstanceId: '00000000-0000-4000-8000-000000000000',
-                })
-                const perMessageContext = {
-                    ...context,
-                    messages: context.messages.slice(0, index + 1),
-                    conversation:
-                        this.store.conversation.get(conversationId) ?? context.conversation,
-                }
-                const templateContext = regexTemplateContext(perMessageContext)
-                const regex = await processRegexText({
-                    text: String(luaDisplay.data ?? ''),
-                    phase: 'editdisplay',
-                    scripts,
-                    templateContext,
-                })
-                const rendered = renderTemplate(regex.text, {
-                    ...templateContext,
-                    assetRenderMode: 'display',
-                }).text
-                output.push({
-                    ...message,
-                    ...(rendered === message.content ? {} : { displayContent: rendered }),
-                })
-            }
-            this.store.sqlite
-                .query(
-                    `UPDATE lua_display_batches SET status = 'complete', result_json = ?, completed_at = ?
-                     WHERE conversation_id = ? AND display_epoch = ? AND script_set_hash = ?`,
-                )
-                .run(JSON.stringify(output), Date.now(), conversationId, epoch, scriptSetHash)
-            return output
-        } catch (error) {
-            this.store.sqlite
-                .query(
-                    `UPDATE lua_display_batches SET status = 'failed', error_json = ?, completed_at = ?
-                     WHERE conversation_id = ? AND display_epoch = ? AND script_set_hash = ?`,
-                )
-                .run(
-                    JSON.stringify({
-                        message: error instanceof Error ? error.message : String(error),
-                    }),
-                    Date.now(),
-                    conversationId,
-                    epoch,
-                    scriptSetHash,
-                )
-            throw error
-        }
-    }
-
-    private async applyEditProcess(
-        preview: PromptPreview,
-        context: ReturnType<GenerationService['context']>,
-    ): Promise<PromptPreview> {
-        const scripts = collectRegexScripts(context.preset, context.character, context.modules)
-        const templateContext = regexTemplateContext(context)
-        const results = await Promise.all(
-            preview.messages.map((message) =>
-                processRegexText({
-                    text: message.content,
-                    phase: 'editprocess',
-                    scripts,
-                    templateContext,
-                }),
-            ),
-        )
-        return {
-            ...preview,
-            messages: preview.messages.map((message, index) => ({
-                ...message,
-                content: results[index]?.text ?? message.content,
-            })),
-            warnings: [
-                ...new Set([...preview.warnings, ...results.flatMap((result) => result.warnings)]),
-            ],
-        }
+        return renderDisplayMessages(this.store, this.lua, conversationId, context)
     }
 
     private context(conversationId: string) {
-        const conversation = this.store.conversation.get(conversationId)
-        if (!conversation) throw new Error('Conversation not found')
-        const character = this.store.character.get(conversation.characterId)
-        if (!character) throw new Error('Character not found')
-        const settings = this.store.settings.get()
-        const preset = this.store.promptPreset.get(
-            this.store.conversation.effectivePromptPresetId(conversation),
-        )
-        if (!preset) throw new Error('Prompt preset not found')
-        const moduleStates = this.store.conversationModule
-            .list(conversationId)
-            .filter((state) => state.enabled)
-        const characterAssets = this.store.characterAsset.list(character.id).map((link) => ({
-            name: link.name,
-            type: link.type,
-            extension: link.extension,
-            url: `/api/v1/assets/${link.assetId}`,
-        }))
-        const moduleAssets = moduleStates.flatMap((state) =>
-            this.store.promptModuleAsset.list(state.module.id).map((link) => ({
-                name: link.name,
-                type: link.type,
-                extension: link.extension,
-                url: `/api/v1/assets/${link.assetId}`,
-                moduleNamespace: state.module.namespace,
-            })),
-        )
-        return {
-            conversation,
-            character,
-            preset,
-            messages: this.store.message.list(conversationId),
-            settings,
-            modelId: this.store.provider.get()?.modelId,
-            persona: this.personas.effectiveFor(conversation, settings),
-            modules: moduleStates.map((state) => state.module),
-            assets: [...characterAssets, ...moduleAssets],
-            moduleActivationSources: Object.fromEntries(
-                moduleStates.map((state) => [state.module.id, state.activationSource]),
-            ),
-        }
+        return loadGenerationContext(this.store, this.personas, conversationId)
     }
-}
-
-interface ChainNote {
-    agentId: string
-    agentName: string
-    layerId: string
-    layerName: string
-    content: string
-}
-
-interface ChainExecutionContext {
-    settingInfo: string
-    globalNote: string
-    longTermMemory: string
-    recentChat: string
-    currentUserInput: string
-}
-
-function chainAgentMessages(
-    agent: ModelChainAgent,
-    context: ChainExecutionContext,
-    notes: ChainNote[],
-    memory: string,
-    response?: string,
-): CompiledMessage[] {
-    const outputInstruction =
-        response === undefined
-            ? '지시된 작업의 결과를 출력하세요. 결과는 연결된 다음 노드에 전달됩니다.'
-            : agent.postMode === 'prepend'
-              ? '현재 응답 앞에 붙일 텍스트만 출력하고 현재 응답은 반복하지 마세요.'
-              : agent.postMode === 'append'
-                ? '현재 응답 뒤에 붙일 텍스트만 출력하고 현재 응답은 반복하지 마세요.'
-                : '사용자에게 보일 최종 응답 전체만 출력하세요. 분석이나 변경 설명은 쓰지 마세요.'
-    const systemPrompt = [
-        agent.systemPrompt || '당신은 연결된 모델 흐름에서 지시된 작업을 수행하는 에이전트입니다.',
-        outputInstruction,
-        agent.memoryEnabled
-            ? [
-                  '응답을 반드시 아래 두 태그로 나누세요.',
-                  '[AGENT_NOTE]다음 노드에 전달할 이번 작업 결과[/AGENT_NOTE]',
-                  '[MEMORY_UPDATE]다음 턴에 유지할 최신 기억 전체[/MEMORY_UPDATE]',
-              ].join('\n')
-            : '',
-    ]
-        .filter(Boolean)
-        .join('\n\n')
-    const sections = contextSections(agent, context, notes)
-    if (response !== undefined) sections.push(`[현재 응답]\n${response}`)
-    if (agent.memoryEnabled) {
-        sections.push(`[에이전트 기억]\n${memory || '(저장된 기억 없음)'}`)
-        if (agent.memoryInstruction) {
-            sections.push(`[기억 갱신 지시]\n${agent.memoryInstruction}`)
-        }
-        if (agent.memoryFormat) sections.push(`[기억 포맷]\n${agent.memoryFormat}`)
-    }
-    return appendAgentInstruction(
-        [
-            { role: 'system', content: systemPrompt },
-            {
-                role: 'user',
-                content: sections.join('\n\n') || '현재 요청에 대해 지시된 작업을 수행하세요.',
-            },
-        ],
-        agent,
-    )
-}
-
-function appendAgentInstruction(
-    messages: CompiledMessage[],
-    agent: ModelChainAgent,
-): CompiledMessage[] {
-    if (!agent.instruction.trim()) return messages
-    return [
-        ...messages,
-        {
-            role: agent.assistantPrefill ? 'assistant' : 'user',
-            content: agent.instruction,
-        },
-    ]
-}
-
-function contextSections(
-    agent: ModelChainAgent,
-    context: ChainExecutionContext,
-    notes: ChainNote[],
-): string[] {
-    return [
-        agent.includeSettingInfo && context.settingInfo
-            ? `[설정 정보]\n${context.settingInfo}`
-            : '',
-        agent.includeGlobalNote && context.globalNote ? `[글로벌 노트]\n${context.globalNote}` : '',
-        agent.includeLongTermMemory && context.longTermMemory
-            ? `[Hypa 장기기억]\n${context.longTermMemory}`
-            : '',
-        agent.includeRecentChat && context.recentChat ? `[최근 대화]\n${context.recentChat}` : '',
-        agent.includeCurrentUserInput && context.currentUserInput
-            ? `[현재 유저 입력]\n${context.currentUserInput}`
-            : '',
-        agent.includePreviousNotes && notes.length
-            ? `[이전 연결 노드의 결과]\n${formatChainNotes(notes)}`
-            : '',
-    ].filter(Boolean)
-}
-
-function buildChainExecutionContext(
-    context: ReturnType<GenerationService['context']>,
-    messages: ReturnType<GenerationService['context']>['messages'],
-    longTermMemory: string,
-): ChainExecutionContext {
-    const lore = selectLoreEntries(
-        [
-            ...(context.character.lorebook || []),
-            ...context.modules.flatMap((module) => module.lorebook),
-        ],
-        messages,
-        context.character.loreSettings,
-    ).entries
-    const currentUserIndex = messages.findLastIndex((message) => message.role === 'user')
-    const recentMessages = messages
-        .filter((_message, index) => index !== currentUserIndex)
-        .slice(-10)
-    return {
-        settingInfo: [
-            context.character.description ? `[캐릭터 설명]\n${context.character.description}` : '',
-            context.character.personality ? `[캐릭터 성격]\n${context.character.personality}` : '',
-            context.character.scenario ? `[시나리오]\n${context.character.scenario}` : '',
-            context.persona.description
-                ? `[페르소나: ${context.persona.name}]\n${context.persona.description}`
-                : '',
-            context.conversation.authorNote
-                ? `[작가 노트]\n${context.conversation.authorNote}`
-                : '',
-            lore.length ? `[활성 로어북]\n${lore.map((entry) => entry.content).join('\n\n')}` : '',
-        ]
-            .filter(Boolean)
-            .join('\n\n'),
-        globalNote: context.character.postHistoryInstructions,
-        longTermMemory,
-        recentChat: serializeCompiledMessages(recentMessages),
-        currentUserInput: currentUserIndex >= 0 ? messages[currentUserIndex]!.content : '',
-    }
-}
-
-function parseAgentMemoryOutput(
-    output: string,
-    memoryEnabled: boolean,
-): { note: string; memoryUpdate: string } {
-    const text = output.trim()
-    if (!memoryEnabled) return { note: text, memoryUpdate: '' }
-    const note = taggedBlock(text, 'AGENT_NOTE')
-    const memoryUpdate = taggedBlock(text, 'MEMORY_UPDATE')
-    return { note: note || text, memoryUpdate }
-}
-
-function taggedBlock(text: string, tag: string): string {
-    const match = text.match(new RegExp(`\\[${tag}\\]([\\s\\S]*?)\\[\\/${tag}\\]`, 'i'))
-    return match?.[1]?.trim() ?? ''
-}
-
-function injectChainNotes(messages: CompiledMessage[], notes: ChainNote[]): CompiledMessage[] {
-    if (!notes.length) return messages
-    return [
-        ...messages,
-        {
-            role: 'system',
-            content: [
-                '[이전 연결 노드의 결과]',
-                formatChainNotes(notes),
-                '위 메모를 참고하되 사용자에게 분석 과정은 노출하지 말고 최종 답변만 작성하세요.',
-            ].join('\n\n'),
-        },
-    ]
-}
-
-function formatChainNotes(notes: ChainNote[]): string {
-    return notes
-        .map((note) => `[${note.layerName} · ${note.agentName}]\n${note.content}`)
-        .join('\n\n')
-}
-
-function serializeCompiledMessages(messages: CompiledMessage[]): string {
-    return messages
-        .map((message) => `${message.role.toUpperCase()}:\n${message.content}`)
-        .join('\n\n')
-}
-
-function applyPostMode(mode: ModelChainAgent['postMode'], current: string, output: string): string {
-    const next = output.trim()
-    if (!next) return current
-    if (mode === 'prepend') return [next, current.trim()].filter(Boolean).join('\n\n')
-    if (mode === 'append') return [current.trim(), next].filter(Boolean).join('\n\n')
-    return next
-}
-
-function regexTemplateContext(context: ReturnType<GenerationService['context']>): TemplateContext {
-    const toggleValues = Object.fromEntries(
-        [...context.preset.toggles, ...context.modules.flatMap((module) => module.toggles)]
-            .filter((toggle) => ['boolean', 'select', 'text', 'textarea'].includes(toggle.type))
-            .map((toggle) => [
-                toggle.key,
-                context.settings.promptToggleValues[toggle.key] ?? toggle.defaultValue,
-            ]),
-    )
-    const last = context.messages.at(-1)?.content || ''
-    return {
-        values: {
-            user: context.persona.name,
-            char: context.character.name,
-            bot: context.character.name,
-            persona: context.persona.description,
-            description: context.character.description,
-            personality: context.character.personality,
-            scenario: context.character.scenario,
-            exampledialogue: context.character.exampleMessage,
-            examplemessage: context.character.exampleMessage,
-            firstmessage: context.character.firstMessage,
-            authornote: context.conversation.authorNote,
-            globalnote: context.character.postHistoryInstructions,
-            lastmessage: last,
-            lastusermessage:
-                [...context.messages].reverse().find((message) => message.role === 'user')
-                    ?.content || '',
-            lastcharmessage:
-                [...context.messages].reverse().find((message) => message.role === 'assistant')
-                    ?.content || '',
-            lastmessageid: String(context.messages.length - 1),
-        },
-        variables: context.conversation.variables,
-        globalVariables: {
-            ...context.character.defaultVariables,
-            ...context.preset.defaultVariables,
-            ...context.settings.globalVariables,
-            ...Object.fromEntries(
-                Object.entries(toggleValues).map(([key, value]) => [`toggle_${key}`, value]),
-            ),
-        },
-        toggles: Object.fromEntries(
-            Object.entries(toggleValues).map(([key, value]) => [
-                key,
-                value === '1' || value.toLocaleLowerCase() === 'true',
-            ]),
-        ),
-        messages: context.messages.map((message) => ({
-            role: message.role,
-            content: message.content,
-            createdAt: message.createdAt,
-        })),
-        modelId: context.modelId,
-        moduleNamespaces: context.modules.map((module) => module.namespace).filter(Boolean),
-        assets: context.assets,
-    }
-}
-
-function normalizeCompiledRole(role: string): 'system' | 'user' | 'assistant' {
-    if (role === 'system' || role === 'sys') return 'system'
-    if (role === 'user') return 'user'
-    return 'assistant'
-}
-
-function replayGeneration(
-    generationId: string,
-    message: NonNullable<ReturnType<Store['message']['get']>>,
-) {
-    const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-            controller.enqueue(
-                encodeSse({ type: 'generation.started', generationId, messageId: message.id }),
-            )
-            controller.enqueue(encodeSse({ type: 'message.completed', generationId, message }))
-            controller.close()
-        },
-    })
-    return { generationId, stream }
-}
-
-function reconnectGeneration(store: Store, generationId: string, requestId: string) {
-    let cancelled = false
-    const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-            let started = false
-            let lastContent = ''
-            while (!cancelled) {
-                const run = store.generation.get(generationId)
-                if (!run) break
-                if (run.messageId) {
-                    const message = store.message.get(run.messageId)
-                    if (!started) {
-                        controller.enqueue(
-                            encodeSse({
-                                type: 'generation.started',
-                                generationId,
-                                messageId: run.messageId,
-                            }),
-                        )
-                        started = true
-                    }
-                    if (message && message.content !== lastContent && run.status === 'running') {
-                        lastContent = message.content
-                        controller.enqueue(
-                            encodeSse({
-                                type: 'message.snapshot',
-                                generationId,
-                                messageId: message.id,
-                                content: message.content,
-                            }),
-                        )
-                    }
-                    if (run.status === 'complete' && message) {
-                        controller.enqueue(
-                            encodeSse({ type: 'message.completed', generationId, message }),
-                        )
-                        break
-                    }
-                    if (run.status === 'failed') {
-                        controller.enqueue(
-                            encodeSse({
-                                type: 'generation.failed',
-                                generationId,
-                                messageId: message?.id,
-                                error: {
-                                    code: apiErrorCode(run.errorCode),
-                                    message: run.errorMessage || 'Generation failed',
-                                    requestId,
-                                },
-                            }),
-                        )
-                        break
-                    }
-                    if (run.status === 'cancelled') break
-                }
-                await Bun.sleep(200)
-            }
-            if (!cancelled) controller.close()
-        },
-        cancel() {
-            cancelled = true
-        },
-    })
-    return { generationId, stream }
-}
-
-function apiErrorCode(value: string | null): ApiError['code'] {
-    const allowed: ApiError['code'][] = [
-        'bad_request',
-        'unauthorized',
-        'forbidden',
-        'not_found',
-        'conflict',
-        'validation_failed',
-        'provider_auth',
-        'provider_unreachable',
-        'model_not_found',
-        'rate_limited',
-        'context_too_large',
-        'safety_blocked',
-        'cancelled',
-        'invalid_provider_response',
-        'internal_error',
-    ]
-    return allowed.includes(value as ApiError['code'])
-        ? (value as ApiError['code'])
-        : 'internal_error'
-}
-
-function logGeneration(
-    log: Logger,
-    generationId: string,
-    provider: string,
-    modelId: string,
-    startedAt: number,
-    status: string,
-    errorCode?: string,
-): void {
-    log.info(
-        {
-            event: 'generation.completed',
-            generationId,
-            provider,
-            modelId,
-            status,
-            durationMs: Math.round(performance.now() - startedAt),
-            ...(errorCode ? { errorCode } : {}),
-        },
-        'Generation completed',
-    )
-}
-
-function encodeSse(event: GenerationEvent): Uint8Array {
-    return new TextEncoder().encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
 }
